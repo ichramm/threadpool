@@ -1,9 +1,15 @@
 
-#include "../threadpool.h"
+#include <threadpool/threadpool.h>
 
 #include <string>
 #include <iostream>
 #include <boost/bind.hpp>
+
+#ifdef _WIN32
+#include <Windows.h>
+#define usleep(us)   ::Sleep(us/1000)
+#define pthread_self ::GetCurrentThreadId
+#endif
 
 using namespace std;
 using namespace boost;
@@ -23,7 +29,12 @@ void test_function(bool print, string message, unsigned int index, unsigned int 
 void test_wait_until_idle()
 {
 	printf("test_wait_until_idle: Start\n");
-	threadpool::pool p;
+	threadpool::pool p(
+				threadpool::MIN_POOL_THREADS,
+				threadpool::MAX_POOL_THREADS,
+				threadpool::TIMEOUT_ADD_MORE_THREADS,
+				threadpool::TIMEOUT_REMOVE_THREADS
+		);
 	for (unsigned i = 1; i < 200; i++) {
 		p.exec(bind(&test_function, true, "test_wait_until_idle",  i, 100));
 	}

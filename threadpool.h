@@ -14,21 +14,31 @@
 #include <boost/function.hpp>
 #include <boost/date_time.hpp>
 
+#ifdef _WIN32
+# ifdef THREADPOOL_EXPORTS
+#  define THREADPOOL_API __declspec(dllexport)
+# else
+#  define THREADPOOL_API __declspec(dllimport)
+# endif
+#else
+# define THREADPOOL_API
+#endif
+
 namespace threadpool
 {
 	/*! Default value for the minimum amount of threads in the pool ( = 8 ) */
-	extern const unsigned int MIN_POOL_THREADS;
+	extern THREADPOOL_API const unsigned int MIN_POOL_THREADS;
 
 	/*! Default value for the maximum amount of threads in the pool ( = 1000 )*/
-	extern const unsigned int MAX_POOL_THREADS;
+	extern THREADPOOL_API const unsigned int MAX_POOL_THREADS;
 
 	/*! Defines how many milliseconds we wait until resizing the pool if all
 	 * threads are busy ( = 100 ms ) */
-	extern const unsigned int TIMEOUT_ADD_MORE_THREADS;
+	extern THREADPOOL_API const unsigned int TIMEOUT_ADD_MORE_THREADS;
 
 	/*! Defines how many milliseconds we wait until removing threads from the
 	 * pool if there are too many threads idle ( = 120K ms) */
-	extern const unsigned int TIMEOUT_REMOVE_THREADS;
+	extern THREADPOOL_API const unsigned int TIMEOUT_REMOVE_THREADS;
 
 
 	/*!
@@ -60,7 +70,7 @@ namespace threadpool
 	 * set to 100 milliseconds, if that value is to high for you just set something
 	 * different when creating the pool.
 	 */
-	class pool
+	class THREADPOOL_API pool
 	: public boost::enable_shared_from_this<pool>,
 	  private boost::noncopyable
 	{
