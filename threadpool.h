@@ -12,7 +12,7 @@
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/scoped_ptr.hpp>
 #include <boost/function.hpp>
-#include <boost/date_time.hpp>
+#include <boost/thread/thread_time.hpp>
 
 #ifdef _WIN32
 # ifdef THREADPOOL_EXPORTS
@@ -82,14 +82,18 @@ namespace threadpool
 		 * \param min_threads Minimum threads to have in the pool
 		 * \param max_threads Maximum threads the pool can create
 		 * \param resize_tolerance_ms Specified how much time we wait until resizing the
-		 * pool when there are pending taks but all the threads are busy.
+		 * pool when there are pending tasks but all the threads are busy.
 		 *
 		 * \pre \code max_threads >= min_threads \endcode
 		 *
-		 * The constructor creates exactly \code min_threads + 1 \endcode threads, the extra threads
-		 * if for monitoring the pool status.
+		 * The constructor creates exactly \code min_threads + 1 \endcode threads, the
+		 * extra thread is for monitoring the pool status.
+		 *
 		 * \note If \p min_thread is equal to \p max_threads the additional thread is not
 		 * created because it's obviously not needed.
+		 *
+		 * \note Even when this class uses an extra thread to monitor pool status, it never
+		 * creates more than \p max_threads threads.
 		 */
 		pool (
 				unsigned int min_threads            = MIN_POOL_THREADS,
@@ -99,29 +103,50 @@ namespace threadpool
 			);
 
 		/*!
-		 * Cancels all pending tasks in the thread pool, but waits until runnig
+		 * Cancels all pending tasks in the thread pool, but waits until running
 		 * tasks are complete. After that, stops and destroys all the threads in the pool
 		 */
 		~pool();
 
 		/*!
-		 * Queue an task for execution, the task is going to be executed as soon as a thread
+		 * Queue an task for immediate execution.
+		 *
+		 * The task is going to be executed as soon as a thread
 		 * is available, if there are no available threads the monitor will create them
 		 */
-		void exec(const task_type& task);
+		void schedule(const task_type& task);
+
+		/*!
+		 * Queue a task for execution when the time as reported
+		 * by \c boost::get_system_time() would be equal to or later
+		 * than the specified \p abs_time
+		 *
+		 * \note When in high load, the task could not be executed exactly when
+		 * it was requested to.
+		 */
+		void schedule(const task_type& task, const boost::system_time& abs_time);
+
+		/*!
+		 * Queue a task for execution after the period of time indicated
+		 * by the \p rel_time argument has elapsed
+		 *
+		 * \note When in high load, the task could not be executed exactly when
+		 * it was requested to.
+		 */
+		void schedule(const task_type& task, const boost::posix_time::time_duration& rel_time);
 
 		/*!
 		 * \return The number of active tasks in the pool, aka the number of busy threads
 		 *
 		 * \remarks This also counts the threads used to monitor the pool state, have it
-		 * in mind if you check exacly the number of tasks your application is performing.
+		 * in mind if you check exactly the number of tasks your application is performing.
 		 */
 		unsigned int active_tasks();
 
 		/*!
 		 * \return The number of tasks waiting for an available thread
 		 *
-		 * If this number gets to high you should be worried (it shouldn't, btw)
+		 * If this number gets to high you should be worried (it shouldn't, BTW)
 		 */
 		unsigned int pending_tasks();
 

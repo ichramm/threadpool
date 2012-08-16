@@ -12,6 +12,8 @@ PACKAGES          ?=$(INCONCERT_DEVEL)/packages
 INCLUDE_DIR       ?=/usr/local/include
 LIB_DIR           ?=/usr/local/lib
 
+OUTPUT_DIR  ?= $(INCONCERT_BIN)
+
 BOOST_VERSION ?=1_44
 BOOST_DIR     ?=$(INCLUDE_DIR)/boost-$(BOOST_VERSION)
 BOOST_LIBS    ?=$(LIB_DIR)
@@ -20,26 +22,81 @@ INCONCERT_COMPILER   ?= g++
 INCONCERT_COMPILER_C ?= gcc
 GCC_VERSION          ?= $(shell expr substr "`$(INCONCERT_COMPILER) -dumpversion | tr -dc '[0-9]'`" 1 2)
 
-LIB_NAME=lib$(PROJECT_NAME)
+# let the user override boost libs if he wants to
+BOOST_THREAD_LIB       ?=boost_thread-gcc$(GCC_VERSION)-mt-$(BOOST_VERSION)
+BOOST_THREAD_LIBD      ?=boost_thread-gcc$(GCC_VERSION)-mt-d-$(BOOST_VERSION)
 
-build: Debug/libthreadpool.so
-Debug/libthreadpool.so: objs
-	g++ -O2 -g -shared -Wl,-soname,$(LIB_NAME) Debug/threadpool.o -o Debug/$(LIB_NAME).so -lboost_thread
+CPPC   =$(INCONCERT_COMPILER)
+CC     =$(INCONCERT_COMPILER_C)
+LINKER =$(INCONCERT_COMPILER)
 
-objs: Debug/threadpool.o
-Debug/threadpool.o: threadpool.h src/threadpool.cpp
-	g++ -fPIC -Wall -Wextra -pedantic -O2 -g -c src/threadpool.cpp -o Debug/threadpool.o
+INCLUDES = -I$(BOOST_DIR)
 
-test_objs: Debug/main.o
-Debug/main.o: threadpool.h tests/main.cpp
-	g++ -Wall -Wextra -pedantic -O2 -g -c tests/main.cpp -o Debug/main.o
+CFLAGS  :=$(CFLAGS) -fPIC -c -Wall -Wextra -pedantic -Werror \
+	-fno-strict-aliasing \
+	-DGCC_VERSION=$(GCC_VERSION)
 
-tests: build test_objs Debug/threadpool.bin
-Debug/threadpool.bin: test_objs
-	g++ -O2 -g Debug/main.o -o Debug/threadpool.bin -L Debug/ -lboost_thread -lthreadpool
+LDFLAGS :=$(LDFLAGS) -Wall -fPIC -shared -g
 
-run: tests
-	LD_PRELOAD=Debug/libthreadpool.so ./Debug/threadpool.bin
+ifeq ($(origin OBJS_ROOT), undefined)
+	OBJS_ROOT :=.
+else
+	OBJS_ROOT := $(OBJS_ROOT)/$(PROJECT_NAME)
+endif
 
+Target ?= Release
+
+ROOT_DIR =../..
+SRC_DIR  =$(ROOT_DIR)/src
+OBJS_DIR =$(OBJS_ROOT)/$(Target)
+
+ifeq (Debug, $(findstring Debug,$(Target)))
+	LIB_NAME          =$(PROJECT_NAME)_d
+	CFLAGS           :=$(CFLAGS) -D_DEBUG -g3
+	BOOST_THREAD_LIB  =$(BOOST_THREAD_LIBD)
+else
+	LIB_NAME  =$(PROJECT_NAME)
+	CFLAGS   :=$(CFLAGS) -O2 -g
+endif
+
+OUTPUT_LIB   =lib$(LIB_NAME).so
+OUTPUT_FILE  =$(OUTPUT_DIR)/$(OUTPUT_LIB)
+LDFLAGS     :=$(LDFLAGS) -Wl,-soname,$(OUTPUT_LIB)
+LIBS         =-L$(BOOST_LIBS) -l$(BOOST_THREAD_LIB)
+
+OBJS = $(OBJS_DIR)/threadpool.o
+
+COMPILE =$(CPPC) $(CFLAGS) "$<" -o "$(OBJS_DIR)/$(*F).o" $(INCLUDES)
+LINK    =$(LINKER) $(LDFLAGS) -o "$(OUTPUT_FILE)" $(OBJS) $(LIBS)
+
+# default target
+build: $(OUTPUT_FILE)
+
+$(OUTPUT_FILE): $(OBJS_DIR) $(OUTPUT_DIR) $(OBJS)
+	$(LINK)
+
+$(OUTPUT_DIR):
+	mkdir -p $(OUTPUT_DIR)
+
+$(OBJS_DIR):
+	mkdir -p $(OBJS_DIR)
+
+# Pattern rules:
+$(OBJS_DIR)/%.o: $(SRC_DIR)/%.cpp
+	$(COMPILE)
+
+$(OBJS_DIR)/threadpool.o: $(ROOT_DIR)/threadpool.h $(SRC_DIR)/threadpool.cpp
+
+.PHONY: clean
 clean:
-	rm -f Debug/*
+	rm -f $(OBJS_DIR)/*.o
+	rm -f $(OUTPUT_FILE)
+	rm -f $(OUTPUT_DIR)/threadpool.bin
+
+test_objs: $(OBJS_DIR)/main.o $(ROOT_DIR)/threadpool.h
+$(OBJS_DIR)/main.o: $(ROOT_DIR)/tests/main.cpp
+	$(COMPILE) -I$(INCONCERT_SOURCES)
+
+tests: build $(OUTPUT_DIR)/threadpool.bin
+$(OUTPUT_DIR)/threadpool.bin: test_objs
+	$(LINKER) -O2 -g -o $(OUTPUT_DIR)/threadpool.bin $(OBJS_DIR)/main.o $(LIBS) -L$(OUTPUT_DIR) -l$(LIB_NAME)

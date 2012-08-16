@@ -37,9 +37,39 @@ struct pool::impl
 private:
 
 	/*!
-	 * This struct holds the propper thread object and
-	 * a boolean value indicating if the thread is valid or not.
-	 * The boolean value should be checked each time a task is done in order
+	 * Task object with schedule information
+	 */
+	struct task_impl
+	{
+	private:
+		task_type   _task;
+		system_time _schedule;
+
+	public:
+		task_impl(task_type task = 0, system_time schedule = system_time())
+		 : _task(task),
+		   _schedule(schedule)
+		{
+		}
+
+		bool is_on_schedule() const
+		{
+			return (
+				_schedule.is_not_a_date_time() ||
+				_schedule <= get_system_time()
+			);
+		}
+
+		void operator()()
+		{
+			_task();
+		}
+	};
+
+	/*!
+	 * This struct holds the proper thread object and
+	 * a Boolean value indicating if the thread is valid or not.
+	 * The Boolean value should be checked each time a task is done in order
 	 * for the thread to stop.
 	 *
 	 * Objects of this type shall always be used with the lock acquired
@@ -56,7 +86,7 @@ private:
 		/*!
 		 * Initializes this, creates the thread
 		 *
-		 * \param worker Function wo execute in the thread
+		 * \param worker Function to execute in the thread
 		 */
 		pool_thread(worker_t worker)
 		 : _worker(worker)
@@ -84,23 +114,23 @@ private:
 		/*!
 		 * Set when a thread is done waiting for call call
 		 */
-		void setBusy(bool b)
+		void set_busy(bool b)
 		{
 			_busy = b;
 		}
 
 		/*!
-		 * Use to ask whetter a thread is executing a tasks
+		 * Use to ask wetter a thread is executing a tasks
 		 * or waiting for a new one
 		 */
-		bool isBusy()
+		bool is_busy()
 		{
 			return _busy;
 		}
 
 		/*!
 		 * Send interrupt signal to the thread
-		 * Threads in idle state (those for \c isBusy will return \c false) should
+		 * Threads in idle state (those for \c is_busy will return \c false) should
 		 * end (almost) immediately
 		 */
 		void interrupt()
@@ -117,7 +147,7 @@ private:
 		}
 	};
 
-	volatile bool      _pool_stop;             /*!< Set when the pool is being destoyed */
+	volatile bool      _pool_stop;             /*!< Set when the pool is being destroyed */
 	unsigned int       _min_threads;           /*!< Minimum thread count */
 	unsigned int       _max_threads;           /*!< Maximum thread count */
 	unsigned int       _resize_up_tolerance;   /*!< Milliseconds to wait before creating more threads  */
@@ -126,7 +156,7 @@ private:
 	atomic_counter     _thread_count;          /*!< Number of threads in the pool */
 
 	list<pool_thread::ptr> _threads;           /*!< List of threads */
-	queue<task_type>       _pending_tasks;     /*!< Task queue */
+	queue<task_impl>       _pending_tasks;     /*!< Task queue */
 	mutex                  _tasks_mutex;       /*!< Synchronizes access to the task queue */
 	mutex                  _threads_mutex;     /*!< Synchronizes access to the pool */
 	condition              _tasks_condition;   /*!< Condition to notify when a new task arrives  */
@@ -155,8 +185,8 @@ public:
 		}
 
 		if ( _min_threads < _max_threads)
-		{ // monitor only when the pull can actually be resized
-			exec(bind(&impl::pool_monitor, this));
+		{ // monitor only when the pull can actually be re-sized
+			schedule(bind(&impl::pool_monitor, this), system_time());
 		}
 	}
 
@@ -172,7 +202,7 @@ public:
 			lock_guard<mutex> lock(_tasks_mutex);
 
 #ifdef __GXX_EXPERIMENTAL_CXX0X__
-			queue<task_type>  tmp;
+			queue<task_impl>  tmp;
 			_pending_tasks.swap(tmp);
 #else
 			for ( ; !_pending_tasks.empty(); _pending_tasks.pop());
@@ -181,8 +211,8 @@ public:
 			_tasks_condition.notify_all();
 		}
 
-		// wake up the monitor
-		{
+		if ( _min_threads < _max_threads)
+		{ // wake up the monitor
 			_monitor_condition.notify_one();
 
 			// wait until the monitor releases the lock
@@ -198,8 +228,10 @@ public:
 	/*!
 	 * Schedules a task for execution
 	 */
-	void exec(const task_type& task)
+	void schedule(const task_type& task, const system_time& abs_time = system_time())
 	{
+		assert(task != 0);
+
 		lock_guard<mutex> lock(_tasks_mutex);
 
 		if ( _pool_stop )
@@ -207,9 +239,7 @@ public:
 			return;
 		}
 
-		assert(task != 0);
-
-		_pending_tasks.push(task);
+		_pending_tasks.push(task_impl(task, abs_time));
 
 		//wake up only one thread
 		_tasks_condition.notify_one();
@@ -225,7 +255,7 @@ public:
 	}
 
 	/*!
-	 * Return the number os pending tasks, aka the number
+	 * Return the number of pending tasks, aka the number
 	 * of tasks in the queue
 	 */
 	unsigned int pending_tasks()
@@ -260,9 +290,7 @@ private:
 	}
 
 	/*!
-	 * Removes a thread from the pool
-	 * \param detach Indicates if the thread must be detached before deleted. If the thread is
-	 * not detached then this function waits until the thread ends
+	 * Removes a thread from the pool but waiting until it ends
 	 */
 	void remove_thread()
 	{
@@ -286,15 +314,22 @@ private:
 		{
 			pool_thread::ptr &th = *it;
 
-			if ( th->isBusy() )
-			{ // t is executing a task, or at least is not waiting for a new one
-				it++;
-				continue;
+			{
+				// don't let it take another task
+				lock_guard<mutex> lock(_tasks_mutex);
+
+				if ( th->is_busy() )
+				{ // it is executing a task, or at least is not waiting for a new one
+					it++;
+					continue;
+				}
+
+				// it's waiting, will throw thread_interrupted
+				th->interrupt();
 			}
 
 			--count;
 			--_thread_count;
-			th->interrupt();
 			th->join();
 			it = _threads.erase(it);
 		}
@@ -313,12 +348,10 @@ private:
 	 */
 	void worker_thread(pool_thread::ptr t)
 	{
-		// loop until get_next_task returns false or the thread has been interrupted
-		// get_next_task blocks if there are no pending tasks
+		task_impl task;
+
 		while ( true )
 		{
-			task_type task;
-
 			{
 				mutex::scoped_lock lock(_tasks_mutex);
 
@@ -331,9 +364,9 @@ private:
 				{
 					try
 					{
-						t->setBusy(false);
+						t->set_busy(false);
 						_tasks_condition.wait(lock);
-						t->setBusy(true);
+						t->set_busy(true);
 					}
 					catch ( const thread_interrupted& )
 					{ // thread has been canceled
@@ -348,6 +381,20 @@ private:
 
 				task = _pending_tasks.front();
 				_pending_tasks.pop();
+
+				if (task.is_on_schedule() == false)
+				{  // the task is not yet ready to execute, it must be re-queued
+					_pending_tasks.push(task);
+
+					// check if this one was the only pending task
+					if (_pending_tasks.size() == 1)
+					{ // sleep the thread for a small amount of time in order
+					  //to avoid stressing the CPU
+						_tasks_condition.timed_wait(lock, posix_time::microseconds(100));
+					}
+
+					continue; // while(true)
+				}
 			}
 
 			// disable interruption for this thread
@@ -357,7 +404,7 @@ private:
 			task();
 			--_active_tasks;
 
-			// check if interrupion has been requested
+			// check if interruption has been requested
 			//before checking for new tasks
 			if ( this_thread::interruption_requested() )
 			{
@@ -375,7 +422,7 @@ private:
 	 * a configurable period of loading has passed.
 	 *
 	 * If the pool is idle then threads are removed from the pool,
-	 * ut this time the waiting period is longer, it helps to
+	 * but this time the waiting period is longer, it helps to
 	 * avoid adding and removing threads all time. The period to wait
 	 * until the pool size is decreased is far longer than the period to
 	 * wait until increasing the pool size. The reason is obvious.
@@ -387,11 +434,11 @@ private:
 		static const float RESIZE_UP_FACTOR    = 1.5; // size increase factor
 		static const float RESIZE_DOWN_FACTOR  = 2.0; // size decrease factor
 
-		// millis to sleep between checks
+		// milliseconds to sleep between checks
 		static const posix_time::milliseconds THREAD_SLEEP_MS(1);
 
-		const unsigned int MAX_STEPS_UP  = max(_resize_up_tolerance, 2u); // make at leats 2 steps
-		const unsigned int MAX_STEPS_DOWN = max(_resize_down_tolerance, 2u); // can wait, make at leats 2 steps
+		const unsigned int MAX_STEPS_UP  = max(_resize_up_tolerance, 2u); // make at least 2 steps
+		const unsigned int MAX_STEPS_DOWN = max(_resize_down_tolerance, 2u); // can wait, make at least 2 steps
 
 		unsigned char resize_flag = 0;
 		unsigned int  step_count = 0; // each step takes 1 ms
@@ -418,7 +465,7 @@ private:
 			}
 
 			if ( step_flag != resize_flag )
-			{ // changes the resize flag and resets the counter
+			{ // changes the re-size flag and resets the counter
 				step_count = 0;
 				resize_flag = step_flag;
 			}
@@ -465,9 +512,19 @@ pool::~pool()
 {
 }
 
-void pool::exec(const task_type& task)
+void pool::schedule(const task_type& task)
 {
-	pimpl->exec(task);
+	pimpl->schedule(task);
+}
+
+void pool::schedule(const task_type& task, const boost::system_time &abs_time)
+{
+	pimpl->schedule(task, abs_time);
+}
+
+void pool::schedule(const task_type& task, const boost::posix_time::time_duration &rel_time)
+{
+	pimpl->schedule(task, get_system_time() + rel_time);
 }
 
 unsigned int pool::active_tasks()
