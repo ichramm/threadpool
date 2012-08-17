@@ -37,7 +37,7 @@ namespace threadpool
 	extern THREADPOOL_API const unsigned int TIMEOUT_ADD_MORE_THREADS;
 
 	/*! Defines how many milliseconds we wait until removing threads from the
-	 * pool if there are too many threads idle ( = 120K ms) */
+	 * pool if there are too many threads idle ( = 300K ms -> 5 minutes) */
 	extern THREADPOOL_API const unsigned int TIMEOUT_REMOVE_THREADS;
 
 
@@ -51,24 +51,28 @@ namespace threadpool
 	/*!
 	 * Thread pool class
 	 *
-	 * This class implements a smart thread pool, smart in the sense it
+	 *  This class implements a smart thread pool, smart in the sense it
 	 * can increase or decrease the number of threads in the pool depending
 	 * on how the load is.
 	 *
-	 * Tasks are queued in FIFO queue, the queue is the only object that needs to be
-	 * in sync, when the queue has to many elements more threads are created.
+	 *  Pending tasks are stored in a FIFO queue, each thread in the pool pops tasks
+	 * from the queue and executes them in its own context.
 	 *
-	 * When the activity is too low the number of threads is decreased in order
-	 * to save resources.
+	 *  Tasks can also be scheduled for execution in a later time, without actually
+	 * blocking a thread.
+	 *  These tasks are queued the same way as standard tasks, but they store the time
+	 * information needed to know when to execute them. Anytime a thread dequeues a task of
+	 * this type, the time information is checked and if the current time is still less than
+	 * the requested execution time then the task is sent back to the queue.
 	 *
-	 * Pool status is monitored by using an additional thread, so don't be scared if
-	 * you see an extra thread around there.
-	 *
-	 * The pool monitor uses a soft-timeout to ensure the pool is resized when it's
-	 * needed, the monitor assumes tasks will finish in a timely fashion, if they
-	 * don't then it's time to resize the pool. By default the worst wait time is
-	 * set to 100 milliseconds, if that value is to high for you just set something
-	 * different when creating the pool.
+	 *  This class uses an additional thread to monitor pool status, so don't be scared if
+	 * you your favorite monitoring tool shows an extra thread around there.
+	 *  The pool monitor uses a soft-timeout to ensure the pool is re-sized when it's really
+	 * needed. By default the monitor waits 100 ms (\see TIMEOUT_ADD_MORE_THREADS) before
+	 * adding more threads to the pool.
+	 *  Something similar happens when it has to remove threads from the pool, but
+	 * this time the timeout is longer because we do not want to delete threads if
+	 * we will probably need them later.
 	 */
 	class THREADPOOL_API pool
 	: public boost::enable_shared_from_this<pool>,
@@ -121,7 +125,7 @@ namespace threadpool
 		 * by \c boost::get_system_time() would be equal to or later
 		 * than the specified \p abs_time
 		 *
-		 * \note When in high load, the task could not be executed exactly when
+		 * \note When in very heavy load, the task could not be executed exactly when
 		 * it was requested to.
 		 */
 		void schedule(const task_type& task, const boost::system_time& abs_time);
@@ -130,7 +134,7 @@ namespace threadpool
 		 * Queue a task for execution after the period of time indicated
 		 * by the \p rel_time argument has elapsed
 		 *
-		 * \note When in high load, the task could not be executed exactly when
+		 * \note When in very heavy load, the task could not be executed exactly when
 		 * it was requested to.
 		 */
 		void schedule(const task_type& task, const boost::posix_time::time_duration& rel_time);
@@ -146,7 +150,7 @@ namespace threadpool
 		/*!
 		 * \return The number of tasks waiting for an available thread
 		 *
-		 * If this number gets to high you should be worried (it shouldn't, BTW)
+		 * If this number gets to high for a long time you should be worried (it shouldn't, BTW)
 		 */
 		unsigned int pending_tasks();
 

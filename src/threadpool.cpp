@@ -30,7 +30,11 @@ namespace threadpool
 const unsigned int MIN_POOL_THREADS         = 8;
 const unsigned int MAX_POOL_THREADS         = 1000;
 const unsigned int TIMEOUT_ADD_MORE_THREADS = 100;
-const unsigned int TIMEOUT_REMOVE_THREADS   = 120*1000;
+const unsigned int TIMEOUT_REMOVE_THREADS   = 300*1000;
+
+
+static const system_time invalid_system_time;
+
 
 struct pool::impl
 {
@@ -39,14 +43,14 @@ private:
 	/*!
 	 * Task object with schedule information
 	 */
-	struct task_impl
+	class task_impl
 	{
 	private:
 		task_type   _task;
 		system_time _schedule;
 
 	public:
-		task_impl(task_type task = 0, system_time schedule = system_time())
+		task_impl(task_type task = 0, system_time schedule = invalid_system_time)
 		 : _task(task),
 		   _schedule(schedule)
 		{
@@ -77,19 +81,19 @@ private:
 	struct pool_thread : public enable_shared_from_this<pool_thread>
 	{
 		typedef shared_ptr<pool_thread> ptr;
-		typedef function<void(ptr)>     worker_t;
+		typedef function<void(ptr)>     worker;
 
-		thread*       _thread; /*!< The thread object it self */
-		worker_t      _worker; /*!< The thread function */
-		bool          _busy;   /*! Indicates whether the worker is executing a task */
+		thread*  _thread; /*!< The thread object it self */
+		worker   _worker; /*!< The thread function */
+		bool     _busy;   /*! Indicates whether the worker is executing a task */
 
 		/*!
 		 * Initializes this, creates the thread
 		 *
 		 * \param worker Function to execute in the thread
 		 */
-		pool_thread(worker_t worker)
-		 : _worker(worker)
+		pool_thread(worker work)
+		 : _worker(work)
 		{
 		}
 
@@ -147,20 +151,21 @@ private:
 		}
 	};
 
-	volatile bool      _pool_stop;             /*!< Set when the pool is being destroyed */
-	unsigned int       _min_threads;           /*!< Minimum thread count */
-	unsigned int       _max_threads;           /*!< Maximum thread count */
-	unsigned int       _resize_up_tolerance;   /*!< Milliseconds to wait before creating more threads  */
-	unsigned int       _resize_down_tolerance; /*!< Milliseconds to wait before deleting threads */
-	atomic_counter     _active_tasks;          /*!< Number of active tasks */
-	atomic_counter     _thread_count;          /*!< Number of threads in the pool */
+	volatile bool   _pool_stop;             /*!< Set when the pool is being destroyed */
+	unsigned int    _min_threads;           /*!< Minimum thread count */
+	unsigned int    _max_threads;           /*!< Maximum thread count */
+	unsigned int    _resize_up_tolerance;   /*!< Milliseconds to wait before creating more threads */
+	unsigned int    _resize_down_tolerance; /*!< Milliseconds to wait before deleting threads */
+	atomic_counter  _active_tasks;          /*!< Number of active tasks */
+	atomic_counter  _thread_count;          /*!< Number of threads in the pool */
 
-	list<pool_thread::ptr> _threads;           /*!< List of threads */
-	queue<task_impl>       _pending_tasks;     /*!< Task queue */
-	mutex                  _tasks_mutex;       /*!< Synchronizes access to the task queue */
-	mutex                  _threads_mutex;     /*!< Synchronizes access to the pool */
-	condition              _tasks_condition;   /*!< Condition to notify when a new task arrives  */
-	condition              _monitor_condition; /*!< Condition to notify the monitor when it has to stop */
+	mutex           _tasks_mutex;           /*!< Synchronizes access to the task queue */
+	mutex           _threads_mutex;         /*!< Synchronizes access to the pool */
+	condition       _tasks_condition;       /*!< Condition to notify when a new task arrives  */
+	condition       _monitor_condition;     /*!< Condition to notify the monitor when it has to stop */
+
+	queue<task_impl>       _pending_tasks;  /*!< Task queue */
+	list<pool_thread::ptr> _threads;        /*!< List of threads */
 
 public:
 
@@ -186,7 +191,7 @@ public:
 
 		if ( _min_threads < _max_threads)
 		{ // monitor only when the pull can actually be re-sized
-			schedule(bind(&impl::pool_monitor, this), system_time());
+			schedule(bind(&impl::pool_monitor, this), invalid_system_time);
 		}
 	}
 
@@ -228,7 +233,7 @@ public:
 	/*!
 	 * Schedules a task for execution
 	 */
-	void schedule(const task_type& task, const system_time& abs_time = system_time())
+	void schedule(const task_type& task, const system_time& abs_time = invalid_system_time)
 	{
 		assert(task != 0);
 
@@ -417,15 +422,16 @@ private:
 	 * This function monitors the pool status in order to add or
 	 * remove threads depending on the load.
 	 *
-	 * If the pool is full and there are queued tasks the more
+	 *  If the pool is full and there are queued tasks the more
 	 * threads are added o the pool. No threads are created until
-	 * a configurable period of loading has passed.
+	 * a configurable period of heavy load has passed.
 	 *
-	 * If the pool is idle then threads are removed from the pool,
+	 *  If the pool is idle then threads are removed from the pool,
 	 * but this time the waiting period is longer, it helps to
-	 * avoid adding and removing threads all time. The period to wait
-	 * until the pool size is decreased is far longer than the period to
-	 * wait until increasing the pool size. The reason is obvious.
+	 * avoid adding and removing threads all time.
+	 *  The period to wait until the pool size is decreased is far
+	 * longer than the period to wait until increasing the
+	 * pool size.
 	 */
 	void pool_monitor()
 	{
@@ -452,15 +458,15 @@ private:
 		while( _pool_stop == false )
 		{
 			if ( active_tasks() == pool_size() && !_pending_tasks.empty() )
-			{
+			{ // pool is full and there are pending tasks
 				step_flag = RESIZE_UP;
 			}
 			else if ( active_tasks() < pool_size() / 4 )
-			{
+			{ // at least the 75% of the threads in the pool are idle
 				step_flag = RESIZE_DOWN;
 			}
 			else
-			{
+			{ // load is greater than 25% but less than 100%, it's ok
 				step_flag = 0;
 			}
 

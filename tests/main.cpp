@@ -35,7 +35,7 @@ void test_wait_until_idle()
 				threadpool::TIMEOUT_ADD_MORE_THREADS,
 				threadpool::TIMEOUT_REMOVE_THREADS
 		);
-	for (unsigned i = 1; i < 200; i++) {
+	for (unsigned i = 1; i <= 200; i++) {
 		p.schedule(bind(&test_function, true, "test_wait_until_idle",  i, 100));
 	}
 	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>1)) {
@@ -49,7 +49,7 @@ void test_wait_until_resize()
 	printf("test_wait_until_resize: Start\n");
 	unsigned int pool_size = 8;
 	threadpool::pool p(pool_size, 100, threadpool::TIMEOUT_ADD_MORE_THREADS, 3000);
-	for (unsigned i = 1; i < 200; i++) {
+	for (unsigned i = 1; i <= 200; i++) {
 		p.schedule(bind(&test_function, true, "test_wait_until_resize",  i, 100));
 	}
 	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>1)) {
@@ -73,7 +73,7 @@ void test_queue_until_pool_size()
 	printf("test_queue_until_pool_size: Start\n");
 	unsigned int pool_size = 100;
 	threadpool::pool p(100);
-	for (unsigned i = 1; i < pool_size; i++) {
+	for (unsigned i = 1; i <= pool_size; i++) {
 		p.schedule(bind(&test_function, true, "test_queue_until_pool_size",  i, 100));
 	}
 
@@ -89,7 +89,7 @@ void test_destroy_with_pending_tasks()
 {
 	printf("test_destroy_with_pending_tasks: Start\n");
 	threadpool::pool p;
-	for (unsigned i = 1; i < 200; i++) {
+	for (unsigned i = 1; i <= 200; i++) {
 		p.schedule(bind(&test_function, true, "test_destroy_with_pending_tasks",  i, 100));
 	}
 	printf("test_destroy_with_pending_tasks: End\n");
@@ -101,7 +101,7 @@ void test_max_equal_min()
 	unsigned int pool_size = 8;
 	threadpool::pool p(pool_size, pool_size);
 
-	for (unsigned i = 1; i < 200; i++) {
+	for (unsigned i = 1; i <= 200; i++) {
 		p.schedule(bind(&test_function, true, "test_max_equal_min",  i, 100));
 	}
 
@@ -116,7 +116,7 @@ void test_pool_stress()
 {
 	printf("test_pool_stress: Start\n");
 	threadpool::pool p;
-	for (unsigned i = 1; i < 10000; i++) {
+	for (unsigned i = 1; i <= 10000; i++) {
 		p.schedule(bind(&test_function, false, "test_pool_stress",  i, 1000));
 	}
 	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>1)) {
@@ -126,22 +126,66 @@ void test_pool_stress()
 	printf("test_pool_stress: End\n");
 }
 
-
-
-
-int main()
+void test_rel_schedule()
 {
-	test_wait_until_idle();
+	printf("test_rel_schedule: Start\n");
 
-	test_wait_until_resize();
+	threadpool::pool p;
+	unsigned total_tasks = 10;
+	for (unsigned i = 1; i <= total_tasks; i++) {
+		p.schedule(bind(&test_function, false, "test_rel_schedule",  i, 1000), posix_time::seconds(5));
+	}
+	usleep(1000);
+	printf("pool_size:%u, active_tasks:%u, pending_tasks:%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks());
+	//assert(p.pending_tasks() == total_tasks);
+	assert(p.active_tasks() == 1); // only the monitor is active
 
-	test_queue_until_pool_size();
+	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>1)) {
+		printf("pool_size:%u, active_tasks:%u, pending_tasks:%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks());
+		usleep(1000*1000);
+	}
+	printf("test_rel_schedule: End\n");
+}
 
-	test_destroy_with_pending_tasks();
 
-	test_max_equal_min();
 
-	test_pool_stress();
+
+int main(int argc, char *argv[])
+{
+	struct {
+		const char *name;
+		void (*func)();
+	} tests_by_name[] = {
+		{ "wait_until_idle",            &test_wait_until_idle },
+		{ "wait_until_resize",          &test_wait_until_resize },
+		{ "queue_until_pool_size",      &test_queue_until_pool_size },
+		{ "destroy_with_pending_tasks", &test_destroy_with_pending_tasks },
+		{ "max_equal_min",              &test_max_equal_min },
+		{ "pool_stress",                &test_pool_stress },
+		{ "rel_schedule",               &test_rel_schedule },
+
+		{ NULL, NULL }
+	};
+
+	if (argc > 1)
+	{ 
+		for (int arg_index = 1; arg_index < argc; ++arg_index)
+		{
+			string test_name(argv[arg_index]);
+			for ( int i = 0; tests_by_name[i].name; ++i )
+			{
+				if (test_name == tests_by_name[i].name)
+				{
+					tests_by_name[i].func();
+				}
+			}
+
+		}
+	}
+	else for ( int i = 0; tests_by_name[i].name; ++i )
+	{
+		tests_by_name[i].func();
+	}
 
 	printf("Bye bye!\n");
 
