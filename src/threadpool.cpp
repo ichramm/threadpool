@@ -151,18 +151,18 @@ private:
 		}
 	};
 
-	volatile bool   _pool_stop;             /*!< Set when the pool is being destroyed */
-	unsigned int    _min_threads;           /*!< Minimum thread count */
-	unsigned int    _max_threads;           /*!< Maximum thread count */
-	unsigned int    _resize_up_tolerance;   /*!< Milliseconds to wait before creating more threads */
-	unsigned int    _resize_down_tolerance; /*!< Milliseconds to wait before deleting threads */
-	atomic_counter  _active_tasks;          /*!< Number of active tasks */
-	atomic_counter  _thread_count;          /*!< Number of threads in the pool */
+	volatile bool      _pool_stop;             /*!< Set when the pool is being destroyed */
+	const unsigned int _min_threads;           /*!< Minimum thread count */
+	const unsigned int _max_threads;           /*!< Maximum thread count */
+	const unsigned int _resize_up_tolerance;   /*!< Milliseconds to wait before creating more threads */
+	const unsigned int _resize_down_tolerance; /*!< Milliseconds to wait before deleting threads */
+	atomic_counter     _active_tasks;          /*!< Number of active tasks */
+	atomic_counter     _thread_count;          /*!< Number of threads in the pool */
 
-	mutex           _tasks_mutex;           /*!< Synchronizes access to the task queue */
-	mutex           _threads_mutex;         /*!< Synchronizes access to the pool */
-	condition       _tasks_condition;       /*!< Condition to notify when a new task arrives  */
-	condition       _monitor_condition;     /*!< Condition to notify the monitor when it has to stop */
+	mutex              _tasks_mutex;           /*!< Synchronizes access to the task queue */
+	mutex              _threads_mutex;         /*!< Synchronizes access to the pool */
+	condition          _tasks_condition;       /*!< Condition to notify when a new task arrives  */
+	condition          _monitor_condition;     /*!< Condition to notify the monitor when it has to stop */
 
 	queue<task_impl>       _pending_tasks;  /*!< Task queue */
 	list<pool_thread::ptr> _threads;        /*!< List of threads */
@@ -189,8 +189,8 @@ public:
 			add_thread();
 		}
 
-		if ( _min_threads < _max_threads)
-		{ // monitor only when the pull can actually be re-sized
+		if ( _min_threads < _max_threads )
+		{ // monitor only when the pull can actually be resized
 			schedule(bind(&impl::pool_monitor, this), invalid_system_time);
 		}
 	}
@@ -216,7 +216,7 @@ public:
 			_tasks_condition.notify_all();
 		}
 
-		if ( _min_threads < _max_threads)
+		if ( _min_threads < _max_threads )
 		{ // wake up the monitor
 			_monitor_condition.notify_one();
 
@@ -255,7 +255,6 @@ public:
 	 */
 	unsigned int active_tasks()
 	{
-
 		return _active_tasks;
 	}
 
@@ -355,7 +354,7 @@ private:
 	{
 		task_impl task;
 
-		while ( true )
+		for( ; ; )
 		{
 			{
 				mutex::scoped_lock lock(_tasks_mutex);
@@ -447,11 +446,10 @@ private:
 		const unsigned int MAX_STEPS_DOWN = max(_resize_down_tolerance, 2u); // can wait, make at least 2 steps
 
 		unsigned char resize_flag = 0;
+		unsigned char step_flag;
 		unsigned int  step_count = 0; // each step takes 1 ms
 
-		unsigned int step_flag;
 		unsigned int next_pool_size;
-
 
 		mutex::scoped_lock lock(_threads_mutex);
 
@@ -471,7 +469,7 @@ private:
 			}
 
 			if ( step_flag != resize_flag )
-			{ // changes the re-size flag and resets the counter
+			{ // changes the resize flag and resets the counter
 				step_count = 0;
 				resize_flag = step_flag;
 			}
@@ -488,7 +486,8 @@ private:
 						add_thread();
 					}
 
-					resize_flag = step_count = 0;
+					resize_flag = 0;
+					step_count = 0;
 				}
 				else if ( resize_flag == RESIZE_DOWN && step_count == MAX_STEPS_DOWN )
 				{ // max steps reached, stop wasting resources
@@ -497,7 +496,8 @@ private:
 
 					remove_idle_threads( pool_size() - next_pool_size );
 
-					resize_flag = step_count = 0;
+					resize_flag = 0;
+					step_count = 0;
 				}
 			}
 
@@ -511,7 +511,16 @@ pool::pool(unsigned int min_threads, unsigned int max_threads,
  unsigned int timeout_add_threads_ms, unsigned int timeout_del_threads_ms)
  : pimpl(new impl(min_threads, max_threads, timeout_add_threads_ms, timeout_del_threads_ms))
 {
+}
 
+pool::pool( const pool& )
+ : enable_shared_from_this<pool>()
+{ // private
+}
+
+const pool& pool::operator=( const pool& )
+{ // private
+	return *this;
 }
 
 pool::~pool()

@@ -8,11 +8,15 @@
 #ifndef threadpool_h__
 #define threadpool_h__
 
-#include <boost/noncopyable.hpp>
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/scoped_ptr.hpp>
 #include <boost/function.hpp>
 #include <boost/thread/thread_time.hpp>
+
+#if _MSC_VER > 1000
+# pragma warning(push)
+# pragma warning(disable: 4251) // class 'T' needs to have dll-interface...
+#endif
 
 #ifdef _WIN32
 # ifdef THREADPOOL_EXPORTS
@@ -67,7 +71,7 @@ namespace threadpool
 	 *
 	 *  This class uses an additional thread to monitor pool status, so don't be scared if
 	 * you your favorite monitoring tool shows an extra thread around there.
-	 *  The pool monitor uses a soft-timeout to ensure the pool is re-sized when it's really
+	 *  The pool monitor uses a soft-timeout to ensure the pool is resized when it's really
 	 * needed. By default the monitor waits 100 ms (\see TIMEOUT_ADD_MORE_THREADS) before
 	 * adding more threads to the pool.
 	 *  Something similar happens when it has to remove threads from the pool, but
@@ -75,8 +79,7 @@ namespace threadpool
 	 * we will probably need them later.
 	 */
 	class THREADPOOL_API pool
-	: public boost::enable_shared_from_this<pool>,
-	  private boost::noncopyable
+		: public boost::enable_shared_from_this<pool>
 	{
 	public:
 
@@ -155,7 +158,7 @@ namespace threadpool
 		unsigned int pending_tasks();
 
 		/*!
-		 * The number of threads in the pool, it should be a number
+		 * \return The number of threads in the pool, it should be a number
 		 * between \c min_threads and \c max_threads (see constructor)
 		 */
 		unsigned int pool_size();
@@ -163,8 +166,15 @@ namespace threadpool
 	private:
 		struct impl;
 		boost::scoped_ptr<impl> pimpl; // pimpl idiom
+
+		pool( const pool& );
+		const pool& operator=( const pool& );
 	};
 
 } // namespace threadpool
+
+#if _MSC_VER > 1000
+# pragma warning(pop)
+#endif
 
 #endif // threadpool_h__
