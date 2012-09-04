@@ -147,7 +147,36 @@ void test_rel_schedule()
 	printf("test_rel_schedule: End\n");
 }
 
+void test_abs_schedule()
+{
+	printf("test_abs_schedule: Start\n");
 
+	threadpool::pool p;
+	unsigned scheduled_tasks = 10;
+	for (unsigned i = 1; i <= scheduled_tasks; i++) {
+		p.schedule(bind(&test_function, false, "test_abs_schedule",  i, 1000), (get_system_time() + posix_time::seconds(5)));
+	}
+	usleep(1000);
+	printf("pool_size:%u, active_tasks:%u, pending_tasks:%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks());
+	//assert(p.pending_tasks() == scheduled_tasks);
+	assert(p.active_tasks() == 1); // only the monitor is active
+
+	unsigned tasks = 5;
+	for (unsigned i = 1; i <= tasks; i++) {
+		p.schedule(bind(&test_function, false, "test_abs_schedule",  i, 3000));
+	}
+
+	usleep(2000);
+	assert(p.active_tasks() == tasks+1);
+	assert(p.pending_tasks() == scheduled_tasks);
+
+
+	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>1)) {
+		printf("pool_size:%u, active_tasks:%u, pending_tasks:%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks());
+		usleep(1000*1000);
+	}
+	printf("test_abs_schedule: End\n");
+}
 
 
 int main(int argc, char *argv[])
@@ -163,12 +192,13 @@ int main(int argc, char *argv[])
 		{ "max_equal_min",              &test_max_equal_min },
 		{ "pool_stress",                &test_pool_stress },
 		{ "rel_schedule",               &test_rel_schedule },
+		{ "abs_schedule",               &test_abs_schedule },
 
 		{ NULL, NULL }
 	};
 
 	if (argc > 1)
-	{ 
+	{
 		for (int arg_index = 1; arg_index < argc; ++arg_index)
 		{
 			string test_name(argv[arg_index]);
