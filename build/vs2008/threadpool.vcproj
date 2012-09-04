@@ -170,7 +170,7 @@
 		</Configuration>
 		<Configuration
 			Name="ReleaseDebuggeable|Win32"
-			OutputDirectory="$(ConfigurationName)"
+			OutputDirectory="$(INCONCERT_DEVEL)\bin"
 			IntermediateDirectory="$(ConfigurationName)"
 			ConfigurationType="2"
 			CharacterSet="1"

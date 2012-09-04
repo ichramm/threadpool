@@ -18,7 +18,7 @@
 	<Configurations>
 		<Configuration
 			Name="Debug|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
+			OutputDirectory="$(INCONCERT_DEVEL)\bin"
 			IntermediateDirectory="$(ConfigurationName)"
 			ConfigurationType="1"
 			CharacterSet="1"
@@ -61,6 +61,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
+				OutputFile="$(OutDir)\threadpool-bin.exe"
 				LinkIncremental="2"
 				AdditionalLibraryDirectories="$(INCONCERT_DEVEL)\packages\boost_1_44_0\lib"
 				GenerateDebugInformation="true"
@@ -91,7 +92,7 @@
 		</Configuration>
 		<Configuration
 			Name="Release|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
+			OutputDirectory="$(INCONCERT_DEVEL)\bin"
 			IntermediateDirectory="$(ConfigurationName)"
 			ConfigurationType="1"
 			CharacterSet="1"
@@ -135,6 +136,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
+				OutputFile="$(OutDir)\threadpool-bin.exe"
 				LinkIncremental="1"
 				AdditionalLibraryDirectories="$(INCONCERT_DEVEL)\packages\boost_1_44_0\lib"
 				GenerateDebugInformation="true"
@@ -167,7 +169,7 @@
 		</Configuration>
 		<Configuration
 			Name="ReleaseDebuggeable|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
+			OutputDirectory="$(INCONCERT_DEVEL)\bin"
 			IntermediateDirectory="$(ConfigurationName)"
 			ConfigurationType="1"
 			CharacterSet="1"
@@ -211,6 +213,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
+				OutputFile="$(OutDir)\threadpool-bin.exe"
 				LinkIncremental="1"
 				AdditionalLibraryDirectories="$(INCONCERT_DEVEL)\packages\boost_1_44_0\lib"
 				GenerateDebugInformation="true"

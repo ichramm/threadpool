@@ -51,17 +51,14 @@ private:
 
 	public:
 		task_impl(task_type task = 0, system_time schedule = invalid_system_time)
-		 : _task(task),
-		   _schedule(schedule)
+		 : _task(task)
+		 , _schedule(schedule)
 		{
 		}
 
 		bool is_on_schedule() const
 		{
-			return (
-				_schedule.is_not_a_date_time() ||
-				_schedule <= get_system_time()
-			);
+			return (_schedule.is_not_a_date_time() || _schedule <= get_system_time());
 		}
 
 		void operator()()
@@ -164,23 +161,23 @@ private:
 	condition          _tasks_condition;       /*!< Condition to notify when a new task arrives  */
 	condition          _monitor_condition;     /*!< Condition to notify the monitor when it has to stop */
 
-	queue<task_impl>       _pending_tasks;  /*!< Task queue */
-	list<pool_thread::ptr> _threads;        /*!< List of threads */
+	queue<task_impl>       _pending_tasks;     /*!< Task queue */
+	list<pool_thread::ptr> _threads;           /*!< List of threads */
 
 public:
 
 	/*!
 	 *
 	 */
-	impl(unsigned int min_threads, unsigned int max_threads,
-	 unsigned int timeout_add_threads, unsigned int timeout_del_threads)
-	: _pool_stop(false),
-	  _min_threads(min_threads == max_threads ? min_threads : min_threads+1),
-	  _max_threads(max_threads), // cannot use more than max_threads threads
-	  _resize_up_tolerance(timeout_add_threads),
-	  _resize_down_tolerance(timeout_del_threads),
-	  _active_tasks(0),
-	  _thread_count(0)
+	impl(unsigned int min_threads, unsigned int max_threads, unsigned int timeout_add_threads,
+	     unsigned int timeout_del_threads)
+	 : _pool_stop(false)
+	 , _min_threads(min_threads == max_threads ? min_threads : min_threads+1)
+	 , _max_threads(max_threads) // cannot use more than max_threads threads
+	 , _resize_up_tolerance(timeout_add_threads)
+	 , _resize_down_tolerance(timeout_del_threads)
+	 , _active_tasks(0)
+	 , _thread_count(0)
 	{
 		assert(_max_threads >= _min_threads);
 
