@@ -255,7 +255,7 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<File
-				RelativePath="..\..\src\threadpool.cpp"
+				RelativePath="..\..\src\pool.cpp"
 				>
 			</File>
 		</Filter>
@@ -265,7 +265,7 @@
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
 			<File
-				RelativePath="..\..\threadpool.h"
+				RelativePath="..\..\pool.h"
 				>
 			</File>
 		</Filter>

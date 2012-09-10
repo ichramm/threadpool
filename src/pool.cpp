@@ -1,11 +1,11 @@
 /*!
- * \file threadpool.cpp
+ * \file pool.cpp
  * \author ichramm
  * \date June 30, 2012, 2:43 AM
  *
  * Thread Pool class implementation
  */
-#include "../threadpool.h"
+#include "../pool.h"
 
 #include <boost/bind.hpp>
 #include <boost/shared_ptr.hpp>

@@ -1,5 +1,5 @@
 /*!
- * \file threadpool.hpp
+ * \file pool.hpp
  * \author ichramm
  * \date June 30, 2012, 2:43 AM
  *

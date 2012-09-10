@@ -29,6 +29,7 @@ BOOST_THREAD_LIBD      ?=boost_thread-gcc$(GCC_VERSION)-mt-d-$(BOOST_VERSION)
 CPPC   =$(INCONCERT_COMPILER)
 CC     =$(INCONCERT_COMPILER_C)
 LINKER =$(INCONCERT_COMPILER)
+ARCHIVER = ar
 
 INCLUDES = -I$(BOOST_DIR)
 
@@ -63,17 +64,21 @@ OUTPUT_LIB   =lib$(LIB_NAME).so
 OUTPUT_FILE  =$(OUTPUT_DIR)/$(OUTPUT_LIB)
 LDFLAGS     :=$(LDFLAGS) -Wl,-soname,$(OUTPUT_LIB)
 LIBS         =-L$(BOOST_LIBS) -l$(BOOST_THREAD_LIB)
+AFLAGS = rcs
 
-OBJS = $(OBJS_DIR)/threadpool.o
+OBJS = $(OBJS_DIR)/pool.o
 
 COMPILE =$(CPPC) $(CFLAGS) "$<" -o "$(OBJS_DIR)/$(*F).o" $(INCLUDES)
 LINK    =$(LINKER) $(LDFLAGS) -o "$(OUTPUT_FILE)" $(OBJS) $(LIBS)
 
 # default target
 build: $(OUTPUT_FILE)
-
 $(OUTPUT_FILE): $(OBJS_DIR) $(OUTPUT_DIR) $(OBJS)
 	$(LINK)
+
+build_static: $(INCONCERT_LIB)/lib$(LIB_NAME).a
+$(INCONCERT_LIB)/lib$(LIB_NAME).a: $(OBJS_DIR) $(OUTPUT_DIR) $(OBJS)
+	$(ARCHIVER) $(AFLAGS) "$(INCONCERT_LIB)/lib$(LIB_NAME).a" $(OBJS)
 
 $(OUTPUT_DIR):
 	mkdir -p $(OUTPUT_DIR)
@@ -85,7 +90,7 @@ $(OBJS_DIR):
 $(OBJS_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(COMPILE)
 
-$(OBJS_DIR)/threadpool.o: $(ROOT_DIR)/threadpool.h $(SRC_DIR)/threadpool.cpp
+$(OBJS_DIR)/pool.o: $(ROOT_DIR)/pool.h $(SRC_DIR)/pool.cpp
 
 .PHONY: clean
 clean:
@@ -93,7 +98,7 @@ clean:
 	rm -f $(OUTPUT_FILE)
 	rm -f $(OUTPUT_DIR)/threadpool.bin
 
-test_objs: $(OBJS_DIR)/main.o $(ROOT_DIR)/threadpool.h
+test_objs: $(OBJS_DIR)/main.o $(ROOT_DIR)/pool.h
 $(OBJS_DIR)/main.o: $(ROOT_DIR)/tests/main.cpp
 	$(COMPILE) -I$(INCONCERT_SOURCES)
 

@@ -1,5 +1,5 @@
 
-#include <threadpool/threadpool.h>
+#include <threadpool/pool.h>
 
 #include <stdio.h>
 #include <string>
