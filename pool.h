@@ -62,7 +62,6 @@ namespace threadpool
 		shutdown_option_wait_for_tasks
 	};
 
-
 	/*!
 	 * Thread pool class
 	 *
@@ -120,7 +119,7 @@ namespace threadpool
 				unsigned int max_threads            = MAX_POOL_THREADS,
 				unsigned int timeout_add_threads_ms = TIMEOUT_ADD_MORE_THREADS,
 				unsigned int timeout_del_threads_ms = TIMEOUT_REMOVE_THREADS,
-				shutdown_option on_shutdown     = shutdown_option_cancel_tasks
+				shutdown_option on_shutdown         = shutdown_option_cancel_tasks
 			);
 
 		/*!

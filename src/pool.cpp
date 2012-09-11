@@ -227,14 +227,14 @@ public:
 		}
 		else
 		{ // _on_shutdown == shutdown_option_wait_for_tasks
-			while (active_tasks() > 0)
-			{
+			while ( active_tasks() > 0 || pending_tasks() > 0 )
+			{ // make sure there are no tasks running and/or pending
 				this_thread::sleep(posix_time::microseconds(1));
 			}
 		}
 
 		while ( pool_size() > 0 )
-		{
+		{ // there is no need to lock here
 			remove_thread();
 		}
 	}
@@ -417,8 +417,8 @@ private:
 			task();
 			--_active_tasks;
 
-			// check if interruption has been requested
-			//before checking for new tasks
+			// check if interruption has been requested before checking for new tasks
+			// this should happen only when the pool is stopping
 			if ( this_thread::interruption_requested() )
 			{
 				return;
