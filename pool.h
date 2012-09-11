@@ -8,10 +8,10 @@
 #ifndef threadpool_h__
 #define threadpool_h__
 
-#include <boost/enable_shared_from_this.hpp>
-#include <boost/scoped_ptr.hpp>
 #include <boost/function.hpp>
+#include <boost/scoped_ptr.hpp>
 #include <boost/thread/thread_time.hpp>
+#include <boost/enable_shared_from_this.hpp>
 
 #if _MSC_VER > 1000
 # pragma warning(push)
@@ -44,12 +44,23 @@ namespace threadpool
 	 * pool if there are too many threads idle ( = 300K ms -> 5 minutes) */
 	extern THREADPOOL_API const unsigned int TIMEOUT_REMOVE_THREADS;
 
-
 	/*!
 	 * Base class for task objects
 	 * Use \c boost::bind to create objects of this type
 	 */
 	typedef boost::function0<void> task_type;
+
+	/*!
+	 * These options control how the pool should behave on destruction
+	 */
+	enum shutdown_option
+	{
+		/*! The pool stops immediately, all tasks are canceled */
+		shutdown_option_cancel_tasks,
+
+		/*! The pool will wait until all tasks are complete before stopping */
+		shutdown_option_wait_for_tasks
+	};
 
 
 	/*!
@@ -88,8 +99,10 @@ namespace threadpool
 		 *
 		 * \param min_threads Minimum threads to have in the pool
 		 * \param max_threads Maximum threads the pool can create
-		 * \param resize_tolerance_ms Specified how much time we wait until resizing the
+		 * \param timeout_add_threads_ms Specifies how much time we wait until resizing the
 		 * pool when there are pending tasks but all the threads are busy.
+		 * \param timeout_del_threads_ms Milliseconds to wait until remove threads from the
+		 * pool when the load is too low
 		 *
 		 * \pre \code max_threads >= min_threads \endcode
 		 *
@@ -106,7 +119,8 @@ namespace threadpool
 				unsigned int min_threads            = MIN_POOL_THREADS,
 				unsigned int max_threads            = MAX_POOL_THREADS,
 				unsigned int timeout_add_threads_ms = TIMEOUT_ADD_MORE_THREADS,
-				unsigned int timeout_del_threads_ms = TIMEOUT_REMOVE_THREADS
+				unsigned int timeout_del_threads_ms = TIMEOUT_REMOVE_THREADS,
+				shutdown_option on_shutdown     = shutdown_option_cancel_tasks
 			);
 
 		/*!

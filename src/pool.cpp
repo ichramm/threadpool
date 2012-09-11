@@ -7,14 +7,21 @@
  */
 #include "../pool.h"
 
+#if _MSC_VER > 1000
+# pragma warning(push)
+// this warning shows when using this_thread::sleep()
+# pragma warning(disable: 4244) //warning C4244: 'argument' : conversion from '__int64' to 'long', possible loss of data
+#endif
 #include <boost/bind.hpp>
-#include <boost/shared_ptr.hpp>
 #include <boost/weak_ptr.hpp>
-#include <boost/thread/mutex.hpp>
+#include <boost/shared_ptr.hpp>
+#include <boost/make_shared.hpp>
+#include <boost/thread.hpp>
 #include <boost/thread/condition.hpp>
 #include <boost/detail/atomic_count.hpp>
-#include <boost/thread.hpp>
-#include <boost/make_shared.hpp>
+#if _MSC_VER > 1000
+# pragma warning(pop)
+#endif
 
 #include <string>
 #include <queue>
@@ -153,6 +160,7 @@ private:
 	const unsigned int _max_threads;           /*!< Maximum thread count */
 	const unsigned int _resize_up_tolerance;   /*!< Milliseconds to wait before creating more threads */
 	const unsigned int _resize_down_tolerance; /*!< Milliseconds to wait before deleting threads */
+	shutdown_option    _on_shutdown;           /*!< How to behave on destruction */
 	atomic_counter     _active_tasks;          /*!< Number of active tasks */
 	atomic_counter     _thread_count;          /*!< Number of threads in the pool */
 
@@ -170,12 +178,13 @@ public:
 	 *
 	 */
 	impl(unsigned int min_threads, unsigned int max_threads, unsigned int timeout_add_threads,
-	     unsigned int timeout_del_threads)
+	     unsigned int timeout_del_threads, shutdown_option on_shutdown)
 	 : _pool_stop(false)
 	 , _min_threads(min_threads == max_threads ? min_threads : min_threads+1)
 	 , _max_threads(max_threads) // cannot use more than max_threads threads
 	 , _resize_up_tolerance(timeout_add_threads)
 	 , _resize_down_tolerance(timeout_del_threads)
+	 , _on_shutdown(on_shutdown)
 	 , _active_tasks(0)
 	 , _thread_count(0)
 	{
@@ -200,25 +209,28 @@ public:
 	{
 		_pool_stop = true;
 
-		{
-			lock_guard<mutex> lock(_tasks_mutex);
-
-#ifdef __GXX_EXPERIMENTAL_CXX0X__
-			queue<task_impl>  tmp;
-			_pending_tasks.swap(tmp);
-#else
-			for ( ; !_pending_tasks.empty(); _pending_tasks.pop());
-#endif
-			// wake up all threads
-			_tasks_condition.notify_all();
-		}
-
 		if ( _min_threads < _max_threads )
 		{ // wake up the monitor
 			_monitor_condition.notify_one();
 
 			// wait until the monitor releases the lock
 			lock_guard<mutex> lock(_threads_mutex);
+		}
+
+		if ( _on_shutdown == shutdown_option_cancel_tasks )
+		{
+			lock_guard<mutex> lock(_tasks_mutex);
+			for ( ; !_pending_tasks.empty(); _pending_tasks.pop())
+				;
+			// wake up all threads
+			_tasks_condition.notify_all();
+		}
+		else
+		{ // _on_shutdown == shutdown_option_wait_for_tasks
+			while (active_tasks() > 0)
+			{
+				this_thread::sleep(posix_time::microseconds(1));
+			}
 		}
 
 		while ( pool_size() > 0 )
@@ -504,9 +516,9 @@ private:
 	}
 };
 
-pool::pool(unsigned int min_threads, unsigned int max_threads,
- unsigned int timeout_add_threads_ms, unsigned int timeout_del_threads_ms)
- : pimpl(new impl(min_threads, max_threads, timeout_add_threads_ms, timeout_del_threads_ms))
+pool::pool(unsigned int min_threads, unsigned int max_threads, unsigned int timeout_add_threads_ms,
+           unsigned int timeout_del_threads_ms, shutdown_option on_shutdown)
+ : pimpl(new impl(min_threads, max_threads, timeout_add_threads_ms, timeout_del_threads_ms, on_shutdown))
 {
 }
 
