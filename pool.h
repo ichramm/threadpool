@@ -5,8 +5,8 @@
  *
  * Thread Pool class declaration
  */
-#ifndef threadpool_h__
-#define threadpool_h__
+#ifndef threadpool_pool_h__
+#define threadpool_pool_h__
 
 #include <boost/function.hpp>
 #include <boost/scoped_ptr.hpp>
@@ -190,4 +190,4 @@ namespace threadpool
 # pragma warning(pop)
 #endif
 
-#endif // threadpool_h__
+#endif // threadpool_pool_h__
