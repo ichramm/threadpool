@@ -39,8 +39,10 @@ const unsigned int MAX_POOL_THREADS         = 1000;
 const unsigned int TIMEOUT_ADD_MORE_THREADS = 100;
 const unsigned int TIMEOUT_REMOVE_THREADS   = 300*1000;
 
-
 static const system_time invalid_system_time;
+
+/*! Time to sleep to avoid 100% CPU usage */
+static const posix_time::milliseconds worker_idle_time(2);
 
 
 struct pool::impl
@@ -229,7 +231,7 @@ public:
 		{ // _on_shutdown == shutdown_option_wait_for_tasks
 			while ( active_tasks() > 0 || pending_tasks() > 0 )
 			{ // make sure there are no tasks running and/or pending
-				this_thread::sleep(posix_time::microseconds(1));
+				this_thread::sleep(worker_idle_time);
 			}
 		}
 
@@ -398,14 +400,8 @@ private:
 				if (task.is_on_schedule() == false)
 				{  // the task is not yet ready to execute, it must be re-queued
 					_pending_tasks.push(task);
-
-					// check if this one was the only pending task
-					if (_pending_tasks.size() == 1)
-					{ // sleep the thread for a small amount of time in order
-					  //to avoid stressing the CPU
-						_tasks_condition.timed_wait(lock, posix_time::microseconds(100));
-					}
-
+					// sleep the thread for a small amount of time in order to avoid stressing the CPU
+					_tasks_condition.timed_wait(lock, worker_idle_time);
 					continue; // while(true)
 				}
 			}
