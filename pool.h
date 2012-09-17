@@ -30,20 +30,6 @@
 
 namespace threadpool
 {
-	/*! Default value for the minimum amount of threads in the pool ( = 8 ) */
-	extern THREADPOOL_API const unsigned int MIN_POOL_THREADS;
-
-	/*! Default value for the maximum amount of threads in the pool ( = 1000 )*/
-	extern THREADPOOL_API const unsigned int MAX_POOL_THREADS;
-
-	/*! Defines how many milliseconds we wait until resizing the pool if all
-	 * threads are busy ( = 100 ms ) */
-	extern THREADPOOL_API const unsigned int TIMEOUT_ADD_MORE_THREADS;
-
-	/*! Defines how many milliseconds we wait until removing threads from the
-	 * pool if there are too many threads idle ( = 300K ms -> 5 minutes) */
-	extern THREADPOOL_API const unsigned int TIMEOUT_REMOVE_THREADS;
-
 	/*!
 	 * Base class for task objects
 	 * Use \c boost::bind to create objects of this type
@@ -70,7 +56,7 @@ namespace threadpool
 	 * on how the load is.
 	 *
 	 *  Pending tasks are stored in a FIFO queue, each thread in the pool pops tasks
-	 * from the queue and executes them in its own context.
+	 * from the queue and executes them.
 	 *
 	 *  Tasks can also be scheduled for execution in a later time, without actually
 	 * blocking a thread.
@@ -82,8 +68,7 @@ namespace threadpool
 	 *  This class uses an additional thread to monitor pool status, so don't be scared if
 	 * you your favorite monitoring tool shows an extra thread around there.
 	 *  The pool monitor uses a soft-timeout to ensure the pool is resized when it's really
-	 * needed. By default the monitor waits 100 ms (\see TIMEOUT_ADD_MORE_THREADS) before
-	 * adding more threads to the pool.
+	 * needed. By default the monitor waits 100 ms before adding more threads to the pool.
 	 *  Something similar happens when it has to remove threads from the pool, but
 	 * this time the timeout is longer because we do not want to delete threads if
 	 * we will probably need them later.
@@ -115,10 +100,10 @@ namespace threadpool
 		 * creates more than \p max_threads threads.
 		 */
 		pool (
-				unsigned int min_threads            = MIN_POOL_THREADS,
-				unsigned int max_threads            = MAX_POOL_THREADS,
-				unsigned int timeout_add_threads_ms = TIMEOUT_ADD_MORE_THREADS,
-				unsigned int timeout_del_threads_ms = TIMEOUT_REMOVE_THREADS,
+				unsigned int min_threads            = -1,
+				unsigned int max_threads            = 1000,
+				unsigned int timeout_add_threads_ms = 100,
+				unsigned int timeout_del_threads_ms = 300000,
 				shutdown_option on_shutdown         = shutdown_option_cancel_tasks
 			);
 
@@ -166,12 +151,12 @@ namespace threadpool
 		/*!
 		 * \return The number of tasks waiting for an available thread
 		 *
-		 * If this number gets to high for a long time you should be worried (it shouldn't, BTW)
+		 * If this number gets too high for a long time you should be worried
 		 */
 		unsigned int pending_tasks();
 
 		/*!
-		 * \return The number of threads in the pool, it should be a number
+		 * \return The number of threads in the pool, it's a number
 		 * between \c min_threads and \c max_threads (see constructor)
 		 */
 		unsigned int pool_size();

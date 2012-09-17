@@ -34,11 +34,6 @@ typedef boost::detail::atomic_count atomic_counter;
 namespace threadpool
 {
 
-const unsigned int MIN_POOL_THREADS         = 8;
-const unsigned int MAX_POOL_THREADS         = 1000;
-const unsigned int TIMEOUT_ADD_MORE_THREADS = 100;
-const unsigned int TIMEOUT_REMOVE_THREADS   = 300*1000;
-
 static const system_time invalid_system_time;
 
 /*! Time to sleep to avoid 100% CPU usage */
@@ -48,6 +43,16 @@ static const posix_time::milliseconds worker_idle_time(2);
 struct pool::impl
 {
 private:
+
+	/*!
+	 * Internal flags used by the pool monitor
+	 */
+	enum resize_flags
+	{
+		flag_no_resize,
+		flag_resize_up,
+		flag_resize_down
+	};
 
 	/*!
 	 * Task object with schedule information
@@ -77,8 +82,8 @@ private:
 	};
 
 	/*!
-	 * This struct holds the proper thread object and
-	 * a Boolean value indicating if the thread is valid or not.
+	 * This struct holds the proper thread object and a Boolean value indicating whether
+	 * the thread is busy executing a task or not.
 	 * The Boolean value should be checked each time a task is done in order
 	 * for the thread to stop.
 	 *
@@ -89,17 +94,21 @@ private:
 		typedef shared_ptr<pool_thread> ptr;
 		typedef function<void(ptr)>     worker;
 
-		thread*  _thread; /*!< The thread object it self */
+		bool     _busy;   /*!< Indicates whether the worker is executing a task */
 		worker   _worker; /*!< The thread function */
-		bool     _busy;   /*! Indicates whether the worker is executing a task */
+		thread*  _thread; /*!< The thread object itself */
 
 		/*!
 		 * Initializes this, creates the thread
 		 *
 		 * \param worker Function to execute in the thread
+		 *
+		 * \note The thread is started later because a shared_ptr is not valid until
+		 * the object is fully constructed
 		 */
 		pool_thread(worker work)
-		 : _worker(work)
+		 : _busy(true)
+		 , _worker(work)
 		{
 		}
 
@@ -114,6 +123,7 @@ private:
 
 		/*!
 		 * Create the thread and and subsequently starts the worker
+		 * It's valid to call shared_from_this() at this point
 		 */
 		void run()
 		{
@@ -130,7 +140,7 @@ private:
 		}
 
 		/*!
-		 * Use to ask wetter a thread is executing a tasks
+		 * Use to ask whether a thread is executing a tasks
 		 * or waiting for a new one
 		 */
 		bool is_busy()
@@ -157,6 +167,23 @@ private:
 		}
 	};
 
+	/*!
+	 * This function computes the starting (and minimum) size of the pool, given the constructor parameters
+	 */
+	static inline unsigned int compute_min_threads(unsigned int desired_min_threads, unsigned int desired_max_threads)
+	{
+		if ( desired_min_threads == -1 )
+		{
+			unsigned int candidate_thread_count = thread::hardware_concurrency() * 2;
+			if ( candidate_thread_count == 0 )
+			{ // information not available, create at least one thread
+				candidate_thread_count = 1;
+			}
+			desired_min_threads = std::min(candidate_thread_count, desired_max_threads);
+		}
+		return desired_min_threads == desired_max_threads ? desired_min_threads : desired_min_threads + 1;
+	}
+
 	volatile bool      _pool_stop;             /*!< Set when the pool is being destroyed */
 	const unsigned int _min_threads;           /*!< Minimum thread count */
 	const unsigned int _max_threads;           /*!< Maximum thread count */
@@ -164,7 +191,7 @@ private:
 	const unsigned int _resize_down_tolerance; /*!< Milliseconds to wait before deleting threads */
 	shutdown_option    _on_shutdown;           /*!< How to behave on destruction */
 	atomic_counter     _active_tasks;          /*!< Number of active tasks */
-	atomic_counter     _thread_count;          /*!< Number of threads in the pool */
+	atomic_counter     _thread_count;          /*!< Number of threads in the pool \see http://stackoverflow.com/questions/228908/is-listsize-really-on */
 
 	mutex              _tasks_mutex;           /*!< Synchronizes access to the task queue */
 	mutex              _threads_mutex;         /*!< Synchronizes access to the pool */
@@ -182,7 +209,7 @@ public:
 	impl(unsigned int min_threads, unsigned int max_threads, unsigned int timeout_add_threads,
 	     unsigned int timeout_del_threads, shutdown_option on_shutdown)
 	 : _pool_stop(false)
-	 , _min_threads(min_threads == max_threads ? min_threads : min_threads+1)
+	 , _min_threads(compute_min_threads(min_threads, max_threads))
 	 , _max_threads(max_threads) // cannot use more than max_threads threads
 	 , _resize_up_tolerance(timeout_add_threads)
 	 , _resize_down_tolerance(timeout_del_threads)
@@ -198,7 +225,7 @@ public:
 		}
 
 		if ( _min_threads < _max_threads )
-		{ // monitor only when the pull can actually be resized
+		{ // monitor only when the pool can actually be resized
 			schedule(bind(&impl::pool_monitor, this), invalid_system_time);
 		}
 	}
@@ -305,7 +332,7 @@ private:
 	}
 
 	/*!
-	 * Removes a thread from the pool but waiting until it ends
+	 * Removes a thread from the pool, possibly waiting until it ends
 	 */
 	void remove_thread()
 	{
@@ -319,7 +346,7 @@ private:
 
 	/*!
 	 * Removes \p count idle threads from the pool
-	 * This function shall be called with \c _locked_this locked
+	 * This function must be called with \c _threads_mutex locked
 	 */
 	void remove_idle_threads(unsigned int count)
 	{ // this function is called locked
@@ -376,7 +403,7 @@ private:
 				}
 
 				for ( ; _pending_tasks.empty(); )
-				{
+				{ // Avoid Spurious Wakes: http://www.justsoftwaresolutions.co.uk/threading/condition-variable-spurious-wakes.html
 					try
 					{
 						t->set_busy(false);
@@ -426,7 +453,7 @@ private:
 	 * This function monitors the pool status in order to add or
 	 * remove threads depending on the load.
 	 *
-	 *  If the pool is full and there are queued tasks the more
+	 *  If the pool is full and there are queued tasks then more
 	 * threads are added o the pool. No threads are created until
 	 * a configurable period of heavy load has passed.
 	 *
@@ -439,8 +466,6 @@ private:
 	 */
 	void pool_monitor()
 	{
-		static const unsigned char RESIZE_UP   = 1; // set when pool size has to be increased
-		static const unsigned char RESIZE_DOWN = 2; // set when pool size has to be decrease
 		static const float RESIZE_UP_FACTOR    = 1.5; // size increase factor
 		static const float RESIZE_DOWN_FACTOR  = 2.0; // size decrease factor
 
@@ -450,8 +475,7 @@ private:
 		const unsigned int MAX_STEPS_UP  = max(_resize_up_tolerance, 2u); // make at least 2 steps
 		const unsigned int MAX_STEPS_DOWN = max(_resize_down_tolerance, 2u); // can wait, make at least 2 steps
 
-		unsigned char resize_flag = 0;
-		unsigned char step_flag;
+		resize_flags resize_flag = flag_no_resize;
 		unsigned int  step_count = 0; // each step takes 1 ms
 
 		unsigned int next_pool_size;
@@ -460,17 +484,19 @@ private:
 
 		while( _pool_stop == false )
 		{
+			resize_flags step_flag;
+
 			if ( active_tasks() == pool_size() && !_pending_tasks.empty() )
 			{ // pool is full and there are pending tasks
-				step_flag = RESIZE_UP;
+				step_flag = flag_resize_up;
 			}
 			else if ( active_tasks() < pool_size() / 4 )
 			{ // at least the 75% of the threads in the pool are idle
-				step_flag = RESIZE_DOWN;
+				step_flag = flag_resize_down;
 			}
 			else
 			{ // load is greater than 25% but less than 100%, it's ok
-				step_flag = 0;
+				step_flag = flag_no_resize;
 			}
 
 			if ( step_flag != resize_flag )
@@ -482,7 +508,7 @@ private:
 			{ // increments the counter
 				step_count += 1;
 
-				if ( resize_flag == RESIZE_UP && step_count == MAX_STEPS_UP )
+				if ( resize_flag == flag_resize_up && step_count == MAX_STEPS_UP )
 				{ // max steps reached, pool size has to be increased
 
 					next_pool_size = min(_max_threads, unsigned(pool_size()*RESIZE_UP_FACTOR));
@@ -491,17 +517,17 @@ private:
 						add_thread();
 					}
 
-					resize_flag = 0;
+					resize_flag = flag_no_resize;
 					step_count = 0;
 				}
-				else if ( resize_flag == RESIZE_DOWN && step_count == MAX_STEPS_DOWN )
+				else if ( resize_flag == flag_resize_down && step_count == MAX_STEPS_DOWN )
 				{ // max steps reached, stop wasting resources
 
 					next_pool_size = max(_min_threads, unsigned(pool_size()/RESIZE_DOWN_FACTOR));
 
 					remove_idle_threads( pool_size() - next_pool_size );
 
-					resize_flag = 0;
+					resize_flag = flag_no_resize;
 					step_count = 0;
 				}
 			}

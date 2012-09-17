@@ -30,10 +30,8 @@ void test_wait_until_idle()
 {
 	printf("test_wait_until_idle: Start\n");
 	threadpool::pool p(
-				threadpool::MIN_POOL_THREADS,
-				threadpool::MAX_POOL_THREADS,
-				threadpool::TIMEOUT_ADD_MORE_THREADS,
-				threadpool::TIMEOUT_REMOVE_THREADS
+				-1,
+				1000
 		);
 	for (unsigned i = 1; i <= 200; i++) {
 		p.schedule(bind(&test_function, true, "test_wait_until_idle",  i, 100));
@@ -48,7 +46,7 @@ void test_wait_until_resize()
 {
 	printf("test_wait_until_resize: Start\n");
 	unsigned int pool_size = 8;
-	threadpool::pool p(pool_size, 100, threadpool::TIMEOUT_ADD_MORE_THREADS, 3000);
+	threadpool::pool p(pool_size, 100, 100, 3000);
 	for (unsigned i = 1; i <= 200; i++) {
 		p.schedule(bind(&test_function, true, "test_wait_until_resize",  i, 100));
 	}
