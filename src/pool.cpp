@@ -385,7 +385,7 @@ private:
 					return;
 				}
 
-				// wait inside loop to cope with spurious wakes: \see http://goo.gl/xOkE6
+				// wait inside loop to cope with spurious wakes, see http://goo.gl/Oxv6T
 				while( m_pendingTasks.empty() )
 				{
 					try

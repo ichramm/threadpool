@@ -72,6 +72,16 @@ namespace threadpool
 	 *  Something similar happens when it has to remove threads from the pool, but
 	 * this time the timeout is longer because we do not want to delete threads if
 	 * we will probably need them later.
+	 *
+	 * \note Even when this class uses an extra thread to monitor pool status, it never
+	 * creates more than \p max_threads threads.
+	 *
+	 * \note The pool increases it's size by a factor of 1.5 and decreases it by a factor of 2.0
+	 *
+	 * \note The pool is considered idle when over 75% of threads are idle
+	 *
+	 * \note The pool is considered overloaded when all threads are busy and there is at
+	 * least one pending task in the queue for not less than 2 milliseconds.
 	 */
 	class THREADPOOL_API pool
 		: public boost::enable_shared_from_this<pool>
@@ -100,9 +110,6 @@ namespace threadpool
 		 *
 		 * \note If \p min_thread is equal to \p max_threads the additional thread is not
 		 * created because it's obviously not needed.
-		 *
-		 * \note Even when this class uses an extra thread to monitor pool status, it never
-		 * creates more than \p max_threads threads.
 		 */
 		pool (
 				unsigned int min_threads            = -1,
