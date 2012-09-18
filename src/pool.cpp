@@ -60,24 +60,24 @@ private:
 	class task_impl
 	{
 	private:
-		task_type   _task;
-		system_time _schedule;
+		task_type   m_task;
+		system_time m_schedule;
 
 	public:
 		task_impl(task_type task = 0, system_time schedule = invalid_system_time)
-		 : _task(task)
-		 , _schedule(schedule)
+		 : m_task(task)
+		 , m_schedule(schedule)
 		{
 		}
 
 		bool is_on_schedule() const
 		{
-			return (_schedule.is_not_a_date_time() || _schedule <= get_system_time());
+			return (m_schedule.is_not_a_date_time() || m_schedule <= get_system_time());
 		}
 
 		void operator()()
 		{
-			_task();
+			m_task();
 		}
 	};
 
@@ -92,24 +92,20 @@ private:
 	struct pool_thread : public enable_shared_from_this<pool_thread>
 	{
 		typedef shared_ptr<pool_thread> ptr;
-		typedef function<void(ptr)>     worker;
+		typedef function<void(pool_thread*)>     worker;
 
-		bool     _busy;   /*!< Indicates whether the worker is executing a task */
-		worker   _worker; /*!< The thread function */
-		thread*  _thread; /*!< The thread object itself */
+		bool     m_busy;   /*!< Indicates whether the worker is executing a task */
+		thread*  m_thread; /*!< The thread object itself */
 
 		/*!
-		 * Initializes this, creates the thread
+		 * Initializes this, creates the thread and subsequently starts the worker
 		 *
 		 * \param worker Function to execute in the thread
-		 *
-		 * \note The thread is started later because a shared_ptr is not valid until
-		 * the object is fully constructed
 		 */
 		pool_thread(worker work)
-		 : _busy(true)
-		 , _worker(work)
-		{
+		 : m_busy(true)
+		{ // avoid using this in member initializer list 
+			m_thread = new thread(work, this);
 		}
 
 		/*!
@@ -117,18 +113,8 @@ private:
 		 */
 		~pool_thread()
 		{
-			_thread->join();
-			delete _thread;
-		}
-
-		/*!
-		 * Create the thread and and subsequently starts the worker
-		 * It's valid to call shared_from_this() at this point
-		 */
-		void run()
-		{
-			_thread = new thread(_worker, shared_from_this());
-			_worker = 0; // _worker is no longer needed
+			m_thread->join();
+			delete m_thread;
 		}
 
 		/*!
@@ -136,16 +122,15 @@ private:
 		 */
 		void set_busy(bool b)
 		{
-			_busy = b;
+			m_busy = b;
 		}
 
 		/*!
-		 * Use to ask whether a thread is executing a tasks
-		 * or waiting for a new one
+		 * Use to ask whether a thread is executing a task or waiting for a new one
 		 */
-		bool is_busy()
+		bool is_busy() const
 		{
-			return _busy;
+			return m_busy;
 		}
 
 		/*!
@@ -155,7 +140,7 @@ private:
 		 */
 		void interrupt()
 		{
-			_thread->interrupt();
+			m_thread->interrupt();
 		}
 
 		/*!
@@ -163,7 +148,7 @@ private:
 		 */
 		void join()
 		{
-			_thread->join();
+			m_thread->join();
 		}
 	};
 
@@ -172,7 +157,7 @@ private:
 	 */
 	static inline unsigned int compute_min_threads(unsigned int desired_min_threads, unsigned int desired_max_threads)
 	{
-		if ( desired_min_threads == -1 )
+		if ( desired_min_threads == unsigned(-1) )
 		{
 			unsigned int candidate_thread_count = thread::hardware_concurrency() * 2;
 			if ( candidate_thread_count == 0 )
@@ -184,22 +169,22 @@ private:
 		return desired_min_threads == desired_max_threads ? desired_min_threads : desired_min_threads + 1;
 	}
 
-	volatile bool      _pool_stop;             /*!< Set when the pool is being destroyed */
-	const unsigned int _min_threads;           /*!< Minimum thread count */
-	const unsigned int _max_threads;           /*!< Maximum thread count */
-	const unsigned int _resize_up_tolerance;   /*!< Milliseconds to wait before creating more threads */
-	const unsigned int _resize_down_tolerance; /*!< Milliseconds to wait before deleting threads */
-	shutdown_option    _on_shutdown;           /*!< How to behave on destruction */
-	atomic_counter     _active_tasks;          /*!< Number of active tasks */
-	atomic_counter     _thread_count;          /*!< Number of threads in the pool \see http://stackoverflow.com/questions/228908/is-listsize-really-on */
+	volatile bool      m_stopPool;             /*!< Set when the pool is being destroyed */
+	const unsigned int m_minThreads;           /*!< Minimum thread count */
+	const unsigned int m_maxThreads;           /*!< Maximum thread count */
+	const unsigned int m_resizeUpTolerance;    /*!< Milliseconds to wait before creating more threads */
+	const unsigned int m_resizeDownTolerance;  /*!< Milliseconds to wait before deleting threads */
+	shutdown_option    m_onShutdown;           /*!< How to behave on destruction */
+	atomic_counter     m_activeTasks;          /*!< Number of active tasks */
+	atomic_counter     m_threadCount;          /*!< Number of threads in the pool \see http://stackoverflow.com/questions/228908/is-listsize-really-on */
 
-	mutex              _tasks_mutex;           /*!< Synchronizes access to the task queue */
-	mutex              _threads_mutex;         /*!< Synchronizes access to the pool */
-	condition          _tasks_condition;       /*!< Condition to notify when a new task arrives  */
-	condition          _monitor_condition;     /*!< Condition to notify the monitor when it has to stop */
+	mutex              m_tasksMutex;           /*!< Synchronizes access to the task queue */
+	mutex              m_threadsMutex;         /*!< Synchronizes access to the pool */
+	condition          m_tasksCondition;       /*!< Condition to notify when a new task arrives  */
+	condition          m_monitorCondition;     /*!< Condition to notify the monitor when it has to stop */
 
-	queue<task_impl>       _pending_tasks;     /*!< Task queue */
-	list<pool_thread::ptr> _threads;           /*!< List of threads */
+	queue<task_impl>       m_pendingTasks;     /*!< Task queue */
+	list<pool_thread::ptr> m_threads;          /*!< List of threads */
 
 public:
 
@@ -208,23 +193,23 @@ public:
 	 */
 	impl(unsigned int min_threads, unsigned int max_threads, unsigned int timeout_add_threads,
 	     unsigned int timeout_del_threads, shutdown_option on_shutdown)
-	 : _pool_stop(false)
-	 , _min_threads(compute_min_threads(min_threads, max_threads))
-	 , _max_threads(max_threads) // cannot use more than max_threads threads
-	 , _resize_up_tolerance(timeout_add_threads)
-	 , _resize_down_tolerance(timeout_del_threads)
-	 , _on_shutdown(on_shutdown)
-	 , _active_tasks(0)
-	 , _thread_count(0)
+	 : m_stopPool(false)
+	 , m_minThreads(compute_min_threads(min_threads, max_threads))
+	 , m_maxThreads(max_threads) // cannot use more than max_threads threads
+	 , m_resizeUpTolerance(timeout_add_threads)
+	 , m_resizeDownTolerance(timeout_del_threads)
+	 , m_onShutdown(on_shutdown)
+	 , m_activeTasks(0)
+	 , m_threadCount(0)
 	{
-		assert(_max_threads >= _min_threads);
+		assert(m_maxThreads >= m_minThreads);
 
-		while( pool_size() < _min_threads )
+		while( pool_size() < m_minThreads )
 		{
 			add_thread();
 		}
 
-		if ( _min_threads < _max_threads )
+		if ( m_minThreads < m_maxThreads )
 		{ // monitor only when the pool can actually be resized
 			schedule(bind(&impl::pool_monitor, this), invalid_system_time);
 		}
@@ -236,26 +221,26 @@ public:
 	 */
 	~impl()
 	{
-		_pool_stop = true;
+		m_stopPool = true;
 
-		if ( _min_threads < _max_threads )
+		if ( m_minThreads < m_maxThreads )
 		{ // wake up the monitor
-			_monitor_condition.notify_one();
+			m_monitorCondition.notify_one();
 
 			// wait until the monitor releases the lock
-			lock_guard<mutex> lock(_threads_mutex);
+			lock_guard<mutex> lock(m_threadsMutex);
 		}
 
-		if ( _on_shutdown == shutdown_option_cancel_tasks )
+		if ( m_onShutdown == shutdown_option_cancel_tasks )
 		{
-			lock_guard<mutex> lock(_tasks_mutex);
-			for ( ; !_pending_tasks.empty(); _pending_tasks.pop())
+			lock_guard<mutex> lock(m_tasksMutex);
+			for ( ; !m_pendingTasks.empty(); m_pendingTasks.pop())
 				;
 			// wake up all threads
-			_tasks_condition.notify_all();
+			m_tasksCondition.notify_all();
 		}
 		else
-		{ // _on_shutdown == shutdown_option_wait_for_tasks
+		{ // m_onShutdown == shutdown_option_wait_for_tasks
 			while ( active_tasks() > 0 || pending_tasks() > 0 )
 			{ // make sure there are no tasks running and/or pending
 				this_thread::sleep(worker_idle_time);
@@ -275,17 +260,17 @@ public:
 	{
 		assert(task != 0);
 
-		lock_guard<mutex> lock(_tasks_mutex);
+		lock_guard<mutex> lock(m_tasksMutex);
 
-		if ( _pool_stop )
+		if ( m_stopPool )
 		{
 			return;
 		}
 
-		_pending_tasks.push(task_impl(task, abs_time));
+		m_pendingTasks.push(task_impl(task, abs_time));
 
 		//wake up only one thread
-		_tasks_condition.notify_one();
+		m_tasksCondition.notify_one();
 	}
 
 	/*!
@@ -293,7 +278,7 @@ public:
 	 */
 	unsigned int active_tasks()
 	{
-		return _active_tasks;
+		return m_activeTasks;
 	}
 
 	/*!
@@ -302,8 +287,8 @@ public:
 	 */
 	unsigned int pending_tasks()
 	{
-		lock_guard<mutex> lock(_tasks_mutex);
-		return _pending_tasks.size();
+		lock_guard<mutex> lock(m_tasksMutex);
+		return m_pendingTasks.size();
 	}
 
 	/*!
@@ -313,7 +298,7 @@ public:
 	 */
 	unsigned int pool_size()
 	{
-		return _thread_count;
+		return m_threadCount;
 	}
 
 private:
@@ -325,10 +310,8 @@ private:
 	{
 		pool_thread::ptr t = make_shared<pool_thread>(bind(&impl::worker_thread, this, _1));
 
-		_threads.push_back(t);
-
-		t->run();
-		++_thread_count;
+		m_threads.push_back(t);
+		++m_threadCount;
 	}
 
 	/*!
@@ -336,29 +319,29 @@ private:
 	 */
 	void remove_thread()
 	{
-		pool_thread::ptr t = _threads.back();
-		_threads.pop_back();
+		pool_thread::ptr t = m_threads.back();
+		m_threads.pop_back();
 
-		--_thread_count;
+		--m_threadCount;
 		t->interrupt();
 		t->join();
 	}
 
 	/*!
 	 * Removes \p count idle threads from the pool
-	 * This function must be called with \c _threads_mutex locked
+	 * This function must be called with \c m_threadsMutex locked
 	 */
 	void remove_idle_threads(unsigned int count)
 	{ // this function is called locked
 
-		list<pool_thread::ptr>::iterator it = _threads.begin();
-		while ( it != _threads.end() && count > 0 )
+		list<pool_thread::ptr>::iterator it = m_threads.begin();
+		while ( it != m_threads.end() && count > 0 )
 		{
 			pool_thread::ptr &th = *it;
 
 			{
 				// don't let it take another task
-				lock_guard<mutex> lock(_tasks_mutex);
+				lock_guard<mutex> lock(m_tasksMutex);
 
 				if ( th->is_busy() )
 				{ // it is executing a task, or at least is not waiting for a new one
@@ -371,9 +354,9 @@ private:
 			}
 
 			--count;
-			--_thread_count;
+			--m_threadCount;
 			th->join();
-			it = _threads.erase(it);
+			it = m_threads.erase(it);
 		}
 	}
 
@@ -388,26 +371,27 @@ private:
 	 * \li Threads are canceled by the pool monitor
 	 * \li The pool stops when it's being destroyed
 	 */
-	void worker_thread(pool_thread::ptr t)
+	void worker_thread(pool_thread *t)
 	{
 		task_impl task;
 
 		for( ; ; )
 		{
 			{
-				mutex::scoped_lock lock(_tasks_mutex);
+				mutex::scoped_lock lock(m_tasksMutex);
 
-				if ( _pool_stop )
+				if ( m_stopPool )
 				{ // check before doing anything
 					return;
 				}
 
-				for ( ; _pending_tasks.empty(); )
-				{ // Avoid Spurious Wakes: http://www.justsoftwaresolutions.co.uk/threading/condition-variable-spurious-wakes.html
+				// wait inside loop to cope with spurious wakes: \see http://goo.gl/xOkE6
+				while( m_pendingTasks.empty() )
+				{
 					try
 					{
 						t->set_busy(false);
-						_tasks_condition.wait(lock);
+						m_tasksCondition.wait(lock);
 						t->set_busy(true);
 					}
 					catch ( const thread_interrupted& )
@@ -415,20 +399,20 @@ private:
 						return;
 					}
 
-					if ( _pool_stop )
+					if ( m_stopPool )
 					{ // stop flag was set while waiting
 						return;
 					}
 				}
 
-				task = _pending_tasks.front();
-				_pending_tasks.pop();
+				task = m_pendingTasks.front();
+				m_pendingTasks.pop();
 
 				if (task.is_on_schedule() == false)
 				{  // the task is not yet ready to execute, it must be re-queued
-					_pending_tasks.push(task);
+					m_pendingTasks.push(task);
 					// sleep the thread for a small amount of time in order to avoid stressing the CPU
-					_tasks_condition.timed_wait(lock, worker_idle_time);
+					m_tasksCondition.timed_wait(lock, worker_idle_time);
 					continue; // while(true)
 				}
 			}
@@ -436,9 +420,9 @@ private:
 			// disable interruption for this thread
 			this_thread::disable_interruption di;
 
-			++_active_tasks;
+			++m_activeTasks;
 			task();
-			--_active_tasks;
+			--m_activeTasks;
 
 			// check if interruption has been requested before checking for new tasks
 			// this should happen only when the pool is stopping
@@ -454,7 +438,7 @@ private:
 	 * remove threads depending on the load.
 	 *
 	 *  If the pool is full and there are queued tasks then more
-	 * threads are added o the pool. No threads are created until
+	 * threads are added to the pool. No threads are created until
 	 * a configurable period of heavy load has passed.
 	 *
 	 *  If the pool is idle then threads are removed from the pool,
@@ -472,21 +456,21 @@ private:
 		// milliseconds to sleep between checks
 		static const posix_time::milliseconds THREAD_SLEEP_MS(1);
 
-		const unsigned int MAX_STEPS_UP  = max(_resize_up_tolerance, 2u); // make at least 2 steps
-		const unsigned int MAX_STEPS_DOWN = max(_resize_down_tolerance, 2u); // can wait, make at least 2 steps
+		const unsigned int MAX_STEPS_UP  = max(m_resizeUpTolerance, 2u); // make at least 2 steps
+		const unsigned int MAX_STEPS_DOWN = max(m_resizeDownTolerance, 2u); // can wait, make at least 2 steps
 
 		resize_flags resize_flag = flag_no_resize;
 		unsigned int  step_count = 0; // each step takes 1 ms
 
 		unsigned int next_pool_size;
 
-		mutex::scoped_lock lock(_threads_mutex);
+		mutex::scoped_lock lock(m_threadsMutex);
 
-		while( _pool_stop == false )
+		while( m_stopPool == false )
 		{
 			resize_flags step_flag;
 
-			if ( active_tasks() == pool_size() && !_pending_tasks.empty() )
+			if ( active_tasks() == pool_size() && !m_pendingTasks.empty() )
 			{ // pool is full and there are pending tasks
 				step_flag = flag_resize_up;
 			}
@@ -511,7 +495,7 @@ private:
 				if ( resize_flag == flag_resize_up && step_count == MAX_STEPS_UP )
 				{ // max steps reached, pool size has to be increased
 
-					next_pool_size = min(_max_threads, unsigned(pool_size()*RESIZE_UP_FACTOR));
+					next_pool_size = min(m_maxThreads, unsigned(pool_size()*RESIZE_UP_FACTOR));
 					while ( pool_size() < next_pool_size )
 					{
 						add_thread();
@@ -523,7 +507,7 @@ private:
 				else if ( resize_flag == flag_resize_down && step_count == MAX_STEPS_DOWN )
 				{ // max steps reached, stop wasting resources
 
-					next_pool_size = max(_min_threads, unsigned(pool_size()/RESIZE_DOWN_FACTOR));
+					next_pool_size = max(m_minThreads, unsigned(pool_size()/RESIZE_DOWN_FACTOR));
 
 					remove_idle_threads( pool_size() - next_pool_size );
 
@@ -532,8 +516,8 @@ private:
 				}
 			}
 
-			// if condition is set _pool_stop was set to true
-			_monitor_condition.timed_wait(lock, THREAD_SLEEP_MS);
+			// if condition is set m_stopPool was set to true
+			m_monitorCondition.timed_wait(lock, THREAD_SLEEP_MS);
 		}
 	}
 };

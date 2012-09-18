@@ -81,10 +81,15 @@ namespace threadpool
 		/*!
 		 * Creates the threadpool, upper and lower bounds can be specified
 		 *
-		 * \param min_threads Minimum threads to have in the pool
+		 * \param min_threads Minimum threads to have in the pool. If this parameter is equal
+		 * to -1 the pool will create twice the number of processors (or HT cores) on the
+		 * host computer as reported by \c boost::thread::hardware_concurrency().
+		 *
 		 * \param max_threads Maximum threads the pool can create
+		 *
 		 * \param timeout_add_threads_ms Specifies how much time we wait until resizing the
 		 * pool when there are pending tasks but all the threads are busy.
+		 *
 		 * \param timeout_del_threads_ms Milliseconds to wait until remove threads from the
 		 * pool when the load is too low
 		 *
