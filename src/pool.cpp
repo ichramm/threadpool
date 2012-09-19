@@ -234,8 +234,9 @@ public:
 		if ( m_onShutdown == shutdown_option_cancel_tasks )
 		{
 			lock_guard<mutex> lock(m_tasksMutex);
-			for ( ; !m_pendingTasks.empty(); m_pendingTasks.pop())
-				;
+			while ( !m_pendingTasks.empty() ) {
+				m_pendingTasks.pop();
+			}
 			// wake up all threads
 			m_tasksCondition.notify_all();
 		}
