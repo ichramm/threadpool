@@ -33,9 +33,13 @@ ARCHIVER = ar
 
 INCLUDES = -I$(BOOST_DIR)
 
-CFLAGS  :=$(CFLAGS) -fPIC -c -Wall -Wextra -pedantic -Werror \
+CFLAGS  :=$(CFLAGS) -fPIC -c -Wall -Wextra -pedantic \
 	-fno-strict-aliasing \
 	-DGCC_VERSION=$(GCC_VERSION)
+
+ifeq (,$(findstring -Wno-error,$(CFLAGS)))
+	CFLAGS :=$(CFLAGS) -Werror
+endif
 
 LDFLAGS :=$(LDFLAGS) -Wall -fPIC -shared -g
 
