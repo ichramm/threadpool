@@ -135,7 +135,7 @@ void test_rel_schedule()
 	}
 	usleep(1000);
 	printf("pool_size:%u, active_tasks:%u, pending_tasks:%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks());
-	//assert(p.pending_tasks() == total_tasks);
+	assert(p.pending_tasks() == total_tasks);
 	assert(p.active_tasks() == 1); // only the monitor is active
 
 	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>1)) {
