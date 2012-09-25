@@ -35,6 +35,7 @@ namespace threadpool
 {
 
 static const system_time invalid_system_time;
+static const system_time::time_duration_type null_duration;
 
 /*! Time to sleep to avoid 100% CPU usage */
 static const posix_time::milliseconds worker_idle_time(2);
@@ -75,9 +76,128 @@ private:
 			return (m_schedule.is_not_a_date_time() || m_schedule <= get_system_time());
 		}
 
+		const system_time& get_schedule() const
+		{
+			return m_schedule;
+		}
+
+		bool operator>(const task_impl& other) const
+		{
+			return (!m_schedule.is_not_a_date_time() && m_schedule >= other.m_schedule);
+		}
+
 		void operator()()
 		{
 			m_task();
+		}
+	};
+
+	/*!
+	 * Priority Queue-Based Task scheduler (or task queue)
+	 *
+	 * The priority queue works better with scheduled tasks because prevents from having too
+	 * many awake pool_thread's (polling the queue, checking schedule, waiting).
+	 *
+	 * With a priority queue a thread will always get the first task in chronological order.
+	 *
+	 */
+	class task_queue
+	{
+	private:
+
+		/*!
+		 * The priority queue
+		 *
+		 *  By default \c std::priority_queue uses the functor std::less<T> as compactor, and inserts
+		 * the elements with greater priority at the beginning of the queue.
+		 *
+		 *  Given the previous fact we conclude that an element is moved to the beginning of the queue
+		 * until \code T::operator<(const T&) \endcode returns \c true, or while the operator
+		 * returns \c false.
+		 *
+		 *  Our algorithm uses the schedule time information to order the elements, and the elements with
+		 * smaller schedule should be inserted at the beginning of the queue (because this ones need to
+		 * be executed first)
+		 *  We use \c std::greater as comparator, so the container will move the element to the beginning
+		 * of the queue while \code T::operator>(const T&) \endcode return \c false, aka, until an element
+		 * which needs to be executed first is found.
+		 *  In other words, \c std::priority_queue inserts at the beginning the elements with greater
+		 * priority, we insert the elements with smaller priority at the beginning of the queue.
+		 */
+		priority_queue <
+				task_impl,
+				vector<task_impl>,
+				greater<task_impl>
+			> m_taskQueue;
+
+	public:
+
+		/*!
+		 * \return \c true if there are no pending tasks
+		 */
+		bool empty() const
+		{
+			return m_taskQueue.empty();
+		}
+
+		/*!
+		 * Pushes a task into the priority queue
+		 */
+		void push(const task_impl& task)
+		{
+			m_taskQueue.push(task);
+		}
+
+		/*!
+		 * This function pops a task from the queue if there is one
+		 *
+		 * \param task The popped task, if anything
+		 * \param wait_duration The time to wait until task execution if the task is a future
+		 * task. If this parameter is equal to \c null_duration then no wait should be performed.
+		 *
+		 * \return \c true If a task has been popped
+		 * \return \c false If the queue is empty (Should no be the case, worker threads
+		 * loop while this condition holds)
+		 *
+		 * \note Worker threads loop while the queue is empty so this function should
+		 * not return false in real life.
+		 *
+		 * \note When wait_duration is set, the worker should wait in the tasks condition because
+		 * the thread should not block, allowing new tasks to be executed in the same thread.
+		 *
+		 * \remarks If the worker decides the task is not going to be executed after the sleep, the
+		 * task should be pushed again into the queue. This happens when the threads wakes up because the
+		 * tasks condition has been set.
+		 *
+		 * \remarks If the threads wakes up because of timeout in the condition::timed_wait call, then
+		 * the task MUST BE executed.
+		 */
+		bool pop(task_impl &task, system_time::time_duration_type &wait_duration)
+		{
+			if ( empty() )
+			{ // this is kind of defensive programming
+				return false;
+			}
+
+			// get the task on the top of the queue and pop it
+			task = m_taskQueue.top();
+			m_taskQueue.pop();
+
+			// set the wait duration if required
+			wait_duration = task.is_on_schedule() ? null_duration : task.get_schedule() - get_system_time();
+
+			return true;
+		};
+
+		/*!
+		 * Removes all elements from the queue
+		 */
+		void clear()
+		{
+			while (!m_taskQueue.empty())
+			{
+				m_taskQueue.pop();
+			}
 		}
 	};
 
@@ -102,14 +222,13 @@ private:
 		 *
 		 * \param worker Function to execute in the thread
 		 */
-		pool_thread(worker work)
+		pool_thread(const worker& work)
 		 : m_busy(true)
-		{ // avoid using this in member initializer list
-			m_thread = thread(work, this);
-		}
+		 , m_thread(work, this)
+		{ }
 
 		/*!
-		 * Destroys the thread, waits until the thread ends
+		 * Waits until the thread ends
 		 */
 		~pool_thread()
 		{
@@ -183,7 +302,7 @@ private:
 	condition          m_tasksCondition;       /*!< Condition to notify when a new task arrives  */
 	condition          m_monitorCondition;     /*!< Condition to notify the monitor when it has to stop */
 
-	queue<task_impl>       m_taskQueue;        /*!< Task queue */
+	task_queue             m_taskQueue;        /*!< Task queue */
 	list<pool_thread::ptr> m_threads;          /*!< List of threads */
 
 public:
@@ -235,9 +354,7 @@ public:
 		if ( m_onShutdown == shutdown_option_cancel_tasks )
 		{
 			lock_guard<mutex> lock(m_tasksMutex);
-			while ( !m_taskQueue.empty() ) {
-				m_taskQueue.pop();
-			}
+			m_taskQueue.clear();
 			// wake up all threads
 			m_tasksCondition.notify_all();
 		}
@@ -376,6 +493,7 @@ private:
 	void worker_thread(pool_thread *t)
 	{
 		task_impl task;
+		system_time::time_duration_type wait_duration;
 
 		for( ; ; )
 		{
@@ -407,20 +525,23 @@ private:
 					}
 				}
 
-				task = m_taskQueue.front();
-				m_taskQueue.pop();
+				assert(m_taskQueue.pop(task, wait_duration));
 				--m_pendingTasks;
 
-				if (task.is_on_schedule() == false)
-				{  // the task is not yet ready to execute, it must be re-queued
-					// we use a counter different than queue::size() because the number of
-					// pending tasks is (for a moment) different than the size of the queue
+				if ( wait_duration != null_duration )
+				{ // got a task with schedule information
 					++m_pendingTasks;
-					// sleep the thread for a small amount of time in order to avoid stressing the CPU
-					m_tasksCondition.timed_wait(lock, worker_idle_time);
-					// perform late queueing in order to avoid other threads checking the same task
-					m_taskQueue.push(task);
-					continue; // for( ; ; )
+
+					if (m_tasksCondition.timed_wait(lock, wait_duration))
+					{ // a new task has been queued and this thread has been signaled
+						m_taskQueue.push(task);
+						// We must signal another thread or this task could never get executed
+						m_tasksCondition.notify_one();
+						continue; // for( ; ; )
+					}
+
+					// timeout reached, this thread is going to execute the task
+					--m_pendingTasks;
 				}
 			}
 
