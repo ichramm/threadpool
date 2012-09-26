@@ -2,7 +2,6 @@
 #include <threadpool/pool.h>
 
 #include <stdio.h>
-#include <math.h>
 #include <string>
 #include <iostream>
 #include <boost/bind.hpp>
@@ -194,7 +193,7 @@ public:
 	void add_diff(int64_t d)
 	{
 		lock_guard<mutex> lock(m_lock);
-		m_counter += abs(d);
+		m_counter += d < 0 ? -d : d;
 		m_numSamples += 1;
 		if (d > m_max) {
 			m_max = d;

@@ -34,7 +34,7 @@ typedef boost::detail::atomic_count atomic_counter;
 namespace threadpool
 {
 
-static const system_time invalid_system_time;
+static const system_time not_a_date_time;
 
 /*! Time to sleep to avoid 100% CPU usage */
 static const posix_time::milliseconds worker_idle_time(2);
@@ -108,7 +108,7 @@ private:
 	};
 
 	/*!
-	 * Defines a comparation function for future_tasks
+	 * Defines a comparator function for future tasks
 	 */
 	struct task_comparator
 	{
@@ -117,6 +117,14 @@ private:
 		 * argument in the priority queue.
 		 *
 		 * \see http://www.cplusplus.com/reference/algorithm/push_heap/
+		 *
+		 * \note The documentation suggests this function must return \c true if \p first
+		 * must be placed before \c second in the queue, but that seems to be untrue, or
+		 * at least that's not what happens in real life.
+		 *   This is why this function returns \c true only when \p first is greater
+		 * than \p second, but if \p first is greater than \p second then \p second
+		 * should be executed before \p first  (because the schedule time is
+		 * greater), meaning that \p first should be placed after \p second in the queue.
 		 */
 		bool operator()(const future_task& first, const future_task& second)
 		{
@@ -134,12 +142,8 @@ private:
 		> future_task_queue;
 
 	/*!
-	 * This struct holds the proper thread object and a Boolean value indicating whether
-	 * the thread is busy executing a task or not.
-	 * The Boolean value should be checked each time a task is done in order
-	 * for the thread to stop.
-	 *
-	 * Objects of this type shall always be used with the lock acquired
+	 * This struct holds the proper thread object and a Boolean value
+	 * indicating whether the thread is busy executing a task or not.
 	 */
 	struct pool_thread : public enable_shared_from_this<pool_thread>
 	{
@@ -156,7 +160,7 @@ private:
 		 */
 		pool_thread(const worker& work)
 		 : m_busy(true)
-		{ // avoid using this in member initializer list
+		{ // avoid using this in member initializer list ('this' is used by the worker)
 			m_thread = thread(work, this);
 		}
 
@@ -299,9 +303,12 @@ public:
 			m_stopPool = true;
 		}
 
-		// wake up the monitor
-		// the monitor must stop only when all tasks are done or future tasks will be ignored
-		m_monitorCondition.notify_one();
+		{// wake up the monitor, the monitor must stop only when all tasks are
+		// done (or canceled), otherwise future tasks will be ignored
+			m_monitorCondition.notify_one();
+			// try to hold the lock to make sure the monitor ends properly
+			lock_guard<mutex> lock(m_lockMonitor);
+		}
 
 		while ( pool_size() > 0 )
 		{
@@ -409,7 +416,7 @@ private:
 	{ // this function is called locked
 
 		list<pool_thread::ptr>::iterator it = m_threads.begin();
-		while ( it != m_threads.end() && count > 0 )
+		while ( !m_stopPool && it != m_threads.end() && count > 0 )
 		{
 			pool_thread::ptr &th = *it;
 
@@ -515,16 +522,16 @@ private:
 	/*!
 	 * Checks the list of scheduled tasks
 	 *
-	 * \return The \c system_time programmed for the most proximous future task, or \c invalid_system_time
+	 * \return The \c system_time programmed for the nearest future task, or \c not_a_date_time
 	 * if the are no future tasks.
 	 *
 	 * \param pendingTasks Returns how many tasks are waiting for an available thread
 	 */
 	system_time poll_future_tasks(unsigned int &pendingTasks)
 	{
-		system_time result = invalid_system_time;
-
+		system_time result = not_a_date_time;
 		lock_guard<mutex> lock(m_lockTasks);
+
 		while ( !m_futureTasks.empty() )
 		{
 			const future_task& task = m_futureTasks.top();
@@ -588,11 +595,11 @@ private:
 			{ // monitor only when the pool can actually be resized
 				resize_flags step_flag;
 
-				if ( m_activeTasks == pool_size() && pendingTasks  > 0 )
+				if ( m_activeTasks == m_threadCount && pendingTasks  > 0 )
 				{ // pool is full and there are pending tasks
 					step_flag = flag_resize_up;
 				}
-				else if ( m_activeTasks < pool_size() / 4 )
+				else if ( m_activeTasks < m_threadCount / 4 )
 				{ // at least the 75% of the threads in the pool are idle
 					step_flag = flag_resize_down;
 				}
@@ -616,7 +623,7 @@ private:
 					{
 					case flag_resize_up:
 						next_pool_size = min(m_maxThreads, unsigned(pool_size()*RESIZE_UP_FACTOR));
-						while ( pool_size() < next_pool_size )
+						while ( !m_stopPool && pool_size() < next_pool_size )
 						{
 							add_thread();
 						}
