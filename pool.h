@@ -153,10 +153,8 @@ namespace threadpool
 		void schedule(const task_type& task, const boost::posix_time::time_duration& rel_time);
 
 		/*!
-		 * \return The number of active tasks in the pool, aka the number of busy threads
-		 *
-		 * \remarks This also counts the threads used to monitor the pool state, have it
-		 * in mind if you check exactly the number of tasks your application is performing.
+		 * \return The number of active tasks in the pool, aka the number of threads
+		 * executing user requested tasks
 		 */
 		unsigned int active_tasks();
 
