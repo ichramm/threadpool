@@ -113,18 +113,18 @@ private:
 	struct task_comparator
 	{
 		/*!
-		 * \return \c true if the first argument goes before the second
-		 * argument in the priority queue.
+		 * \return \c true if the first argument goes before the second argument in the priority queue.
 		 *
+		 * The comparator function is used to sort elements from lower to higher priority:
+		 *   [ p1, p2, ..., pn ]
+		 * Given two tasks, the task scheduled to run at a greater date will have a lower
+		 * priority, so we need to sort in this way:
+		 *   [ far_away_task, no_so_near_task, nearest_task ]
+		 *
+		 * This functor is called by \c std::push_heap, which is called by \c priority_queue::push.
+		 *
+		 * \see http://www.cplusplus.com/reference/stl/priority_queue/push/
 		 * \see http://www.cplusplus.com/reference/algorithm/push_heap/
-		 *
-		 * \note The documentation suggests this function must return \c true if \p first
-		 * must be placed before \c second in the queue, but that seems to be untrue, or
-		 * at least that's not what happens in real life.
-		 *   This is why this function returns \c true only when \p first is greater
-		 * than \p second, but if \p first is greater than \p second then \p second
-		 * should be executed before \p first  (because the schedule time is
-		 * greater), meaning that \p first should be placed after \p second in the queue.
 		 */
 		bool operator()(const future_task& first, const future_task& second)
 		{
