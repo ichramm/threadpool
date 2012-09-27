@@ -57,7 +57,6 @@ void test_wait_until_resize()
 	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>0)) {
 		usleep(1000);
 	}
-	pool_size += 1;
 	int counter = 0;
 	while (p.pool_size() > pool_size) {
 		usleep(1000);
@@ -79,7 +78,6 @@ void test_queue_until_pool_size()
 		p.schedule(bind(&test_function, true, "test_queue_until_pool_size",  i, 100));
 	}
 
-	pool_size += 1; // monitor
 	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>0)) {
 		assert(p.pool_size() == pool_size);
 		usleep(100000);
