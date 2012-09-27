@@ -173,11 +173,12 @@ private:
 		}
 
 		/*!
-		 * Set when a thread is done waiting for call call
+		 * The worker calls this function with \code busy = false \endcode when starts
+		 * waiting for a new task, and calls it with \code busy = true \endcode when it's done waiting
 		 */
-		void set_busy(bool b)
+		void set_busy(bool busy)
 		{
-			m_busy = b;
+			m_busy = busy;
 		}
 
 		/*!
@@ -357,7 +358,6 @@ public:
 
 	/*!
 	 * Returns the number of active tasks. \see worker_thread
-	 * The \c pool_monitor thread is not included
 	 */
 	unsigned int active_tasks()
 	{
