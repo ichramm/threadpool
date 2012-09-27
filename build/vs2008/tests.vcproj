@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9.00"
-	Name="tester"
+	Name="tests"
 	ProjectGUID="{D2015B21-8A45-412B-832F-8B2DB8AF2248}"
-	RootNamespace="tester"
+	RootNamespace="tests"
 	Keyword="Win32Proj"
 	TargetFrameworkVersion="196613"
 	>
@@ -254,7 +254,7 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<File
-				RelativePath="..\..\tests\threadpool_tests.cpp"
+				RelativePath="..\..\tests\tests.cpp"
 				>
 			</File>
 		</Filter>

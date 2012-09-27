@@ -102,10 +102,10 @@ clean:
 	rm -f $(OUTPUT_FILE)
 	rm -f $(OUTPUT_DIR)/threadpool.bin
 
-test_objs: $(OBJS_DIR)/threadpool_tests.o $(ROOT_DIR)/pool.h
-$(OBJS_DIR)/threadpool_tests.o: $(ROOT_DIR)/tests/threadpool_tests.cpp
+test_objs: $(OBJS_DIR)/tests.o $(ROOT_DIR)/pool.h
+$(OBJS_DIR)/tests.o: $(ROOT_DIR)/tests/tests.cpp
 	$(COMPILE) -I$(INCONCERT_SOURCES)
 
 tests: build $(OUTPUT_DIR)/threadpool.bin
 $(OUTPUT_DIR)/threadpool.bin: test_objs
-	$(LINKER) -O2 -g -o $(OUTPUT_DIR)/threadpool.bin $(OBJS_DIR)/threadpool_tests.o $(LIBS) -L$(OUTPUT_DIR) -l$(LIB_NAME)
+	$(LINKER) -O2 -g -o $(OUTPUT_DIR)/threadpool.bin $(OBJS_DIR)/tests.o $(LIBS) -L$(OUTPUT_DIR) -l$(LIB_NAME)
