@@ -221,7 +221,7 @@ private:
 			}
 			desired_min_threads = std::min(candidate_thread_count, desired_max_threads);
 		}
-		return desired_min_threads == desired_max_threads ? desired_min_threads : desired_min_threads + 1;
+		return desired_min_threads == desired_max_threads ? desired_min_threads : desired_min_threads;
 	}
 
 // members
@@ -237,6 +237,7 @@ private:
 	atomic_counter     m_pendingTasks;     /*!< Number of tasks in the queue: \code = m_taskQueue.size() + m_futureTasks.size() \endcode */
 	atomic_counter     m_threadCount;      /*!< Number of threads in the pool \see http://stackoverflow.com/questions/228908/is-listsize-really-on */
 
+	thread             m_threadMonitor;    /*! A reference to the thread executing the monitor */
 	mutex              m_lockTasks;        /*!< Synchronizes access to the immediate-tasks queue */
 	mutex              m_lockMonitor;      /*!< Synchronizes access to the pool monitor and future tasks */
 	condition          m_tasksCondition;   /*!< Condition to notify when there is a new task for immediate execution */
@@ -270,7 +271,7 @@ public:
 			add_thread();
 		}
 
-		schedule(bind(&impl::pool_monitor, this));
+		m_threadMonitor = thread(&impl::pool_monitor, this);
 	}
 
 	/*!
@@ -303,12 +304,11 @@ public:
 			m_stopPool = true;
 		}
 
-		{// wake up the monitor, the monitor must stop only when all tasks are
+		// wake up the monitor, the monitor must stop only when all tasks are
 		// done (or canceled), otherwise future tasks will be ignored
-			m_monitorCondition.notify_one();
-			// try to hold the lock to make sure the monitor ends properly
-			lock_guard<mutex> lock(m_lockMonitor);
-		}
+		m_monitorCondition.notify_one();
+		// make sure the monitor ends properly
+		m_threadMonitor.join();
 
 		while ( pool_size() > 0 )
 		{
@@ -361,7 +361,7 @@ public:
 	 */
 	unsigned int active_tasks()
 	{
-		return (m_activeTasks - 1);
+		return m_activeTasks;
 	}
 
 	/*!
@@ -595,11 +595,11 @@ private:
 			{ // monitor only when the pool can actually be resized
 				resize_flags step_flag;
 
-				if ( m_activeTasks == m_threadCount && pendingTasks  > 0 )
+				if ( active_tasks() == pool_size() && pendingTasks  > 0 )
 				{ // pool is full and there are pending tasks
 					step_flag = flag_resize_up;
 				}
-				else if ( m_activeTasks < m_threadCount / 4 )
+				else if ( active_tasks() < pool_size() / 4 )
 				{ // at least the 75% of the threads in the pool are idle
 					step_flag = flag_resize_down;
 				}
