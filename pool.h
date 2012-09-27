@@ -49,22 +49,6 @@ namespace threadpool
 	};
 
 	/*!
-	 * Callback definitions
-	 */
-	class THREADPOOL_API pool_callbacks
-	{
-	public:
-		virtual ~pool_callbacks(){};
-
-		/*!
-		 * Called when the pool is resized
-		 *
-		 * \param delta Specifies how many threads where added or removed from the pool
-		 */
-		virtual void pool_size_changed( int delta ) = 0;
-	};
-
-	/*!
 	 * Thread pool class
 	 *
 	 *  This class implements a smart thread pool, smart in the sense it
@@ -122,8 +106,6 @@ namespace threadpool
 		 * \param on_shutdown Specifies what to do with pending tasks when the pool is being
 		 * destroyed. \see shutdown_option.
 		 *
-		 * \param callbacks An object implementing pool's callback functions. \see pool_callbacks.
-		 *
 		 * \pre \code max_threads >= min_threads \endcode
 		 *
 		 * The constructor creates exactly \code min_threads + 1 \endcode threads, the
@@ -131,16 +113,13 @@ namespace threadpool
 		 *
 		 * \note If \p min_thread is equal to \p max_threads the additional thread is not
 		 * created because it's obviously not needed.
-		 *
-		 * \note This object stores a weak reference to \p callbacks
 		 */
 		pool (
-				unsigned int min_threads                    = -1,
-				unsigned int max_threads                    = 1000,
-				unsigned int timeout_add_threads_ms         = 100,
-				unsigned int timeout_del_threads_ms         = 300000,
-				shutdown_option on_shutdown                 = shutdown_option_cancel_tasks,
-				boost::shared_ptr<pool_callbacks> callbacks = boost::shared_ptr<pool_callbacks>()
+				unsigned int min_threads            = -1,
+				unsigned int max_threads            = 1000,
+				unsigned int timeout_add_threads_ms = 100,
+				unsigned int timeout_del_threads_ms = 300000,
+				shutdown_option on_shutdown         = shutdown_option_cancel_tasks
 			);
 
 		/*!
@@ -194,6 +173,16 @@ namespace threadpool
 		 * between \c min_threads and \c max_threads (see constructor)
 		 */
 		unsigned int pool_size();
+
+	protected:
+
+		/*!
+		 * Called when the pool is resized
+		 *
+		 * \param delta Specifies how many threads where added or removed from the pool
+		 */
+		virtual void pool_size_changed( int /*delta*/ )
+		{ }
 
 	private:
 		struct impl;

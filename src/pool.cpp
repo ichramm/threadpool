@@ -227,13 +227,14 @@ private:
 
 // members
 private:
-	volatile bool            m_stopPool;            /*!< Set when the pool is being destroyed */
-	const unsigned int       m_minThreads;          /*!< Minimum thread count */
-	const unsigned int       m_maxThreads;          /*!< Maximum thread count */
-	const unsigned int       m_resizeUpTolerance;   /*!< Milliseconds to wait before creating more threads */
-	const unsigned int       m_resizeDownTolerance; /*!< Milliseconds to wait before deleting threads */
-	shutdown_option          m_onShutdown;          /*!< How to behave on destruction */
-	weak_ptr<pool_callbacks> m_callbacks;           /*!< Weak reference to pool's callback object */
+	pool              *m_owner;               /*!< Pool object holding this pimpl */
+
+	volatile bool      m_stopPool;            /*!< Set when the pool is being destroyed */
+	const unsigned int m_minThreads;          /*!< Minimum thread count */
+	const unsigned int m_maxThreads;          /*!< Maximum thread count */
+	const unsigned int m_resizeUpTolerance;   /*!< Milliseconds to wait before creating more threads */
+	const unsigned int m_resizeDownTolerance; /*!< Milliseconds to wait before deleting threads */
+	shutdown_option    m_onShutdown;          /*!< How to behave on destruction */
 
 	atomic_counter     m_activeTasks;      /*!< Number of active tasks (aka tasks being executed by a worker) */
 	atomic_counter     m_pendingTasks;     /*!< Number of tasks in the queue: \code = m_taskQueue.size() + m_futureTasks.size() \endcode */
@@ -254,15 +255,15 @@ public:
 	/*!
 	 *
 	 */
-	impl(unsigned int min_threads, unsigned int max_threads, unsigned int timeout_add_threads,
-	     unsigned int timeout_del_threads, shutdown_option on_shutdown, shared_ptr<pool_callbacks> callbacks)
-	 : m_stopPool(false)
+	impl(pool *owner, unsigned int min_threads, unsigned int max_threads, unsigned int timeout_add_threads,
+	     unsigned int timeout_del_threads, shutdown_option on_shutdown)
+	 : m_owner(owner)
+	 , m_stopPool(false)
 	 , m_minThreads(compute_min_threads(min_threads, max_threads))
 	 , m_maxThreads(max_threads) // cannot use more than max_threads threads
 	 , m_resizeUpTolerance(timeout_add_threads)
 	 , m_resizeDownTolerance(timeout_del_threads)
 	 , m_onShutdown(on_shutdown)
-	 , m_callbacks(callbacks)
 	 , m_activeTasks(0)
 	 , m_pendingTasks(0)
 	 , m_threadCount(0)
@@ -641,11 +642,7 @@ private:
 					}
 
 					resize_flag = flag_no_resize;
-					shared_ptr<pool_callbacks> callbacks = m_callbacks.lock();
-					if ( callbacks )
-					{
-						callbacks->pool_size_changed( pool_size() - prev_pool_size );
-					}
+					m_owner->pool_size_changed( pool_size() - prev_pool_size );
 				}
 			}
 
@@ -661,8 +658,8 @@ private:
 };
 
 pool::pool(unsigned int min_threads, unsigned int max_threads, unsigned int timeout_add_threads_ms,
-	unsigned int timeout_del_threads_ms, shutdown_option on_shutdown, shared_ptr<pool_callbacks> callbacks)
- : pimpl(new impl(min_threads, max_threads, timeout_add_threads_ms, timeout_del_threads_ms, on_shutdown, callbacks))
+	unsigned int timeout_del_threads_ms, shutdown_option on_shutdown)
+ : pimpl(new impl(this, min_threads, max_threads, timeout_add_threads_ms, timeout_del_threads_ms, on_shutdown))
 {
 }
 
