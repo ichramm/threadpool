@@ -345,7 +345,6 @@ public:
 	void schedule(const task_type& task, const system_time& abs_time)
 	{
 		assert(task != 0);
-		assert(abs_time >= get_system_time());
 
 		lock_guard<mutex> lock(m_lockMonitor);
 
