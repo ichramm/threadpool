@@ -222,7 +222,8 @@ private:
 			}
 			desired_min_threads = std::min(candidate_thread_count, desired_max_threads);
 		}
-		return desired_min_threads == desired_max_threads ? desired_min_threads : desired_min_threads;
+
+		return desired_min_threads;
 	}
 
 // members
