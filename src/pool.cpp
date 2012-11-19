@@ -108,14 +108,14 @@ private:
 	};
 
 	/*!
-	 * Defines a comparator function for future tasks
+	 * Defines a comparison function for future tasks
 	 */
 	struct task_comparator
 	{
 		/*!
 		 * \return \c true if the first argument goes before the second argument in the priority queue.
 		 *
-		 * The comparator function is used to sort elements from lower to higher priority:
+		 * The comparison function is used to sort elements from lower to higher priority:
 		 *   [ p1, p2, ..., pn ]
 		 * Given two tasks, the task scheduled to run at a greater date will have a lower
 		 * priority, so we need to sort in this way:
@@ -248,7 +248,7 @@ private:
 	condition          m_monitorCondition; /*!< Condition to notify the monitor when it has to stop or there is a new future task */
 
 	list<pool_thread::ptr>  m_threads;     /*!< Holds the threads being managed by this pool instance */
-	queue<task_type>        m_taskQueue;   /*!< Immediate-tasks queue, tasks are processes in FIFO manner */
+	queue<task_type>        m_taskQueue;   /*!< Immediate-tasks queue, tasks are processed in FIFO manner */
 	future_task_queue       m_futureTasks; /*!< Priority queue with future tasks, the monitor pops from this queue and pushes into \c m_taskQueue */
 
 public:
@@ -607,7 +607,7 @@ private:
 					step_flag = flag_resize_down;
 				}
 				else
-				{ // load is greater than 25% but less than 100%, it's ok
+				{ // load is greater than 25% but less than 100%, it's OK
 					step_flag = flag_no_resize;
 				}
 
