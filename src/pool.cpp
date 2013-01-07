@@ -466,10 +466,10 @@ private:
 	 */
 	void worker_thread(pool_thread *t)
 	{
-		task_type task;
-
 		for( ; ; )
 		{
+			task_type task;
+
 			{
 				mutex::scoped_lock lock(m_lockTasks);
 
