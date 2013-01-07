@@ -68,6 +68,16 @@ private:
 	};
 
 	/*!
+	 * Internal flags used to represent the pool state
+	 */
+	enum pool_state
+	{
+		pool_state_active    = 1,  // 001
+		pool_state_stopping  = 3,  // 011
+		pool_state_down      = 6   // 110
+	};
+
+	/*!
 	 * Task object with schedule information
 	 */
 	class future_task
@@ -230,22 +240,22 @@ private:
 private:
 	pool              *m_owner;               /*!< Pool object holding this pimpl */
 
-	volatile bool      m_stopPool;            /*!< Set when the pool is being destroyed */
-	const unsigned int m_minThreads;          /*!< Minimum thread count */
-	const unsigned int m_maxThreads;          /*!< Maximum thread count */
-	const unsigned int m_resizeUpTolerance;   /*!< Milliseconds to wait before creating more threads */
-	const unsigned int m_resizeDownTolerance; /*!< Milliseconds to wait before deleting threads */
-	shutdown_option    m_onShutdown;          /*!< How to behave on destruction */
+	volatile pool_state m_state;               /*!< Current pool state */
+	const unsigned int  m_minThreads;          /*!< Minimum thread count */
+	const unsigned int  m_maxThreads;          /*!< Maximum thread count */
+	const unsigned int  m_resizeUpTolerance;   /*!< Milliseconds to wait before creating more threads */
+	const unsigned int  m_resizeDownTolerance; /*!< Milliseconds to wait before deleting threads */
+	shutdown_option     m_onShutdown;          /*!< How to behave on destruction */
 
-	atomic_counter     m_activeTasks;      /*!< Number of active tasks (aka tasks being executed by a worker) */
-	atomic_counter     m_pendingTasks;     /*!< Number of tasks in the queue: \code = m_taskQueue.size() + m_futureTasks.size() \endcode */
-	atomic_counter     m_threadCount;      /*!< Number of threads in the pool \see http://stackoverflow.com/questions/228908/is-listsize-really-on */
+	atomic_counter      m_activeTasks;      /*!< Number of active tasks (aka tasks being executed by a worker) */
+	atomic_counter      m_pendingTasks;     /*!< Number of tasks in the queue: \code = m_taskQueue.size() + m_futureTasks.size() \endcode */
+	atomic_counter      m_threadCount;      /*!< Number of threads in the pool \see http://stackoverflow.com/questions/228908/is-listsize-really-on */
 
-	thread             m_threadMonitor;    /*! A reference to the thread executing the monitor */
-	mutex              m_lockTasks;        /*!< Synchronizes access to the immediate-tasks queue */
-	mutex              m_lockMonitor;      /*!< Synchronizes access to the pool monitor and future tasks */
-	condition          m_tasksCondition;   /*!< Condition to notify when there is a new task for immediate execution */
-	condition          m_monitorCondition; /*!< Condition to notify the monitor when it has to stop or there is a new future task */
+	thread              m_threadMonitor;    /*! A reference to the thread executing the monitor */
+	mutex               m_lockTasks;        /*!< Synchronizes access to the immediate-tasks queue */
+	mutex               m_lockMonitor;      /*!< Synchronizes access to the pool monitor and future tasks */
+	condition           m_tasksCondition;   /*!< Condition to notify when there is a new task for immediate execution */
+	condition           m_monitorCondition; /*!< Condition to notify the monitor when it has to stop or there is a new future task */
 
 	list<pool_thread::ptr>  m_threads;     /*!< Holds the threads being managed by this pool instance */
 	queue<task_type>        m_taskQueue;   /*!< Immediate-tasks queue, tasks are processed in FIFO manner */
@@ -259,7 +269,7 @@ public:
 	impl(pool *owner, unsigned int min_threads, unsigned int max_threads, unsigned int timeout_add_threads,
 	     unsigned int timeout_del_threads, shutdown_option on_shutdown)
 	 : m_owner(owner)
-	 , m_stopPool(false)
+	 , m_state(pool_state_active)
 	 , m_minThreads(compute_min_threads(min_threads, max_threads))
 	 , m_maxThreads(max_threads) // cannot use more than max_threads threads
 	 , m_resizeUpTolerance(timeout_add_threads)
@@ -285,9 +295,10 @@ public:
 	 */
 	~impl()
 	{
+		m_state = pool_state_stopping;
+
 		if ( m_onShutdown == shutdown_option_cancel_tasks )
 		{ // this is the default option
-			m_stopPool = true;
 
 			lock_guard<mutex> lock(m_lockTasks);
 
@@ -304,10 +315,9 @@ public:
 			{ // make sure there are no tasks running and/or pending
 				this_thread::sleep(worker_idle_time);
 			}
-
-			// set stop flag only when all tasks are complete
-			m_stopPool = true;
 		}
+
+		m_state = pool_state_down;
 
 		// wake up the monitor, the monitor must stop only when all tasks are
 		// done (or canceled), otherwise future tasks will be ignored
@@ -324,39 +334,53 @@ public:
 	/*!
 	 * Schedules a task for immediate execution
 	 */
-	void schedule(const task_type& task)
+	schedule_result schedule(const task_type& task)
 	{
 		assert(task != 0);
 
 		lock_guard<mutex> lock(m_lockTasks);
 
-		if ( m_stopPool )
-		{
-			return;
+		if ( m_state != pool_state_active )
+		{ // should not happen, but we'd better be ready
+			return schedule_result_err_down;
 		}
 
 		++m_pendingTasks;
 		internal_schedule(task);
+
+		return schedule_result_ok;
 	}
 
 	/*!
 	 * Schedules a task for future execution
 	 */
-	void schedule(const task_type& task, const system_time& abs_time)
+	schedule_result schedule(const task_type& task, const system_time& abs_time)
 	{
 		assert(task != 0);
 
 		lock_guard<mutex> lock(m_lockMonitor);
 
-		if ( m_stopPool )
-		{
-			return;
+		if ( m_state != pool_state_active )
+		{ // should not happen, but we'd better be ready
+			return schedule_result_err_down;
 		}
 
 		++m_pendingTasks;
-		m_futureTasks.push(future_task(task, abs_time));
-
+		m_futureTasks.push( future_task(task, abs_time) );
 		m_monitorCondition.notify_one();
+
+		return schedule_result_ok;
+	}
+
+	/*!
+	 * This function is used to check if the active flag is set
+	 *
+	 * \note The pool can be active and stopping at the same time, scheduling functions
+	 * must perform an stricter validation.
+	 */
+	bool is_active()
+	{
+		return bool(m_state & pool_state_active);
 	}
 
 	/*!
@@ -419,7 +443,7 @@ private:
 	{ // this function is called locked
 
 		list<pool_thread::ptr>::iterator it = m_threads.begin();
-		while ( !m_stopPool && it != m_threads.end() && count > 0 )
+		while ( is_active() && it != m_threads.end() && count > 0 )
 		{
 			pool_thread::ptr &th = *it;
 
@@ -473,7 +497,7 @@ private:
 			{
 				mutex::scoped_lock lock(m_lockTasks);
 
-				if ( m_stopPool )
+				if ( is_active() == false )
 				{ // check before doing anything
 					return;
 				}
@@ -492,7 +516,7 @@ private:
 						return;
 					}
 
-					if ( m_stopPool )
+					if ( is_active() == false )
 					{ // stop flag was set while waiting
 						return;
 					}
@@ -586,7 +610,7 @@ private:
 
 		mutex::scoped_lock lock(m_lockMonitor);
 
-		while( m_stopPool == false )
+		while( is_active() )
 		{
 			// check future tasks
 			system_time next_task_time = poll_future_tasks(pendingTasks);
@@ -626,7 +650,7 @@ private:
 					{
 					case flag_resize_up:
 						next_pool_size = min(m_maxThreads, unsigned(pool_size()*RESIZE_UP_FACTOR));
-						while ( !m_stopPool && pool_size() < next_pool_size )
+						while ( is_active() && pool_size() < next_pool_size )
 						{
 							add_thread();
 						}
@@ -677,19 +701,19 @@ pool::~pool()
 {
 }
 
-void pool::schedule(const task_type& task)
+schedule_result pool::schedule(const task_type& task)
 {
-	pimpl->schedule(task);
+	return pimpl->schedule(task);
 }
 
-void pool::schedule(const task_type& task, const boost::system_time &abs_time)
+schedule_result pool::schedule(const task_type& task, const boost::system_time &abs_time)
 {
-	pimpl->schedule(task, abs_time);
+	return pimpl->schedule(task, abs_time);
 }
 
-void pool::schedule(const task_type& task, const boost::posix_time::time_duration &rel_time)
+schedule_result pool::schedule(const task_type& task, const boost::posix_time::time_duration &rel_time)
 {
-	pimpl->schedule(task, get_system_time() + rel_time);
+	return pimpl->schedule(task, get_system_time() + rel_time);
 }
 
 unsigned int pool::active_tasks()

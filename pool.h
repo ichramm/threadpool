@@ -37,6 +37,33 @@ namespace threadpool
 	typedef boost::function0<void> task_type;
 
 	/*!
+	 * Scheduling function will return one of these values
+	 */
+	enum schedule_result
+	{
+		/*!
+		 * The task was correctly scheduled
+		 */
+		schedule_result_ok,
+
+		/*!
+		 * The pool is stopping and cannot accept more tasks
+		 */
+		schedule_result_err_down,
+
+		/*!
+		 * The pool is to busy to accept another task
+		 * This may happens only if all the following conditions are met:
+		 * \li All threads are busy
+		 * \li Maximum number of threads has been reached (i.e. Cannot crate more threads)
+		 * \li Task queue is full
+		 *
+		 * \note This value is not in currently in use because the task queue has no capacity limit.
+		 */
+		schedule_result_err_busy
+	};
+
+	/*!
 	 * These options control how the pool should behave on destruction
 	 */
 	enum shutdown_option
@@ -134,7 +161,7 @@ namespace threadpool
 		 * The task is going to be executed as soon as a thread
 		 * is available, if there are no available threads the monitor will create them
 		 */
-		void schedule(const task_type& task);
+		schedule_result schedule(const task_type& task);
 
 		/*!
 		 * Queue a task for execution when the time as reported
@@ -144,7 +171,7 @@ namespace threadpool
 		 * \note When in very heavy load, the task could not be executed exactly when
 		 * it was requested to.
 		 */
-		void schedule(const task_type& task, const boost::system_time& abs_time);
+		schedule_result schedule(const task_type& task, const boost::system_time& abs_time);
 
 		/*!
 		 * Queue a task for execution after the period of time indicated
@@ -153,7 +180,7 @@ namespace threadpool
 		 * \note When in very heavy load, the task could not be executed exactly when
 		 * it was requested to.
 		 */
-		void schedule(const task_type& task, const boost::posix_time::time_duration& rel_time);
+		schedule_result schedule(const task_type& task, const boost::posix_time::time_duration& rel_time);
 
 		/*!
 		 * \return The number of active tasks in the pool, aka the number of threads
