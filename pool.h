@@ -156,6 +156,13 @@ namespace threadpool
 		~pool();
 
 		/*!
+		 * Stops the pool and subsequently destroys all threads
+		 *
+		 * \remarks This function should be called only once
+		 */
+		void stop();
+
+		/*!
 		 * Queue an task for immediate execution.
 		 *
 		 * The task is going to be executed as soon as a thread

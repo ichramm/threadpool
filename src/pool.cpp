@@ -295,6 +295,14 @@ public:
 	 */
 	~impl()
 	{
+		if (m_state == pool_state_active)
+		{
+			stop();
+		}
+	}
+
+	void stop()
+	{
 		m_state = pool_state_stopping;
 
 		if ( m_onShutdown == shutdown_option_cancel_tasks )
@@ -699,6 +707,11 @@ const pool& pool::operator=( const pool& )
 
 pool::~pool()
 {
+}
+
+void pool::stop()
+{
+	pimpl->stop();
 }
 
 schedule_result pool::schedule(const task_type& task)
