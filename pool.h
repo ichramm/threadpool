@@ -193,20 +193,20 @@ namespace threadpool
 		 * \return The number of active tasks in the pool, aka the number of threads
 		 * executing user requested tasks
 		 */
-		unsigned int active_tasks();
+		unsigned int active_tasks() const;
 
 		/*!
 		 * \return The number of tasks waiting for an available thread
 		 *
 		 * If this number gets too high for a long time you should be worried
 		 */
-		unsigned int pending_tasks();
+		unsigned int pending_tasks() const;
 
 		/*!
 		 * \return The number of threads in the pool, it's a number
 		 * between \c min_threads and \c max_threads (see constructor)
 		 */
-		unsigned int pool_size();
+		unsigned int pool_size() const;
 
 	protected:
 

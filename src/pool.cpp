@@ -245,11 +245,11 @@ private:
 	const unsigned int  m_maxThreads;          /*!< Maximum thread count */
 	const unsigned int  m_resizeUpTolerance;   /*!< Milliseconds to wait before creating more threads */
 	const unsigned int  m_resizeDownTolerance; /*!< Milliseconds to wait before deleting threads */
-	shutdown_option     m_onShutdown;          /*!< How to behave on destruction */
+	const shutdown_option  m_onShutdown;       /*!< How to behave on destruction */
 
-	atomic_counter      m_activeTasks;      /*!< Number of active tasks (aka tasks being executed by a worker) */
-	atomic_counter      m_pendingTasks;     /*!< Number of tasks in the queue: \code = m_taskQueue.size() + m_futureTasks.size() \endcode */
-	atomic_counter      m_threadCount;      /*!< Number of threads in the pool \see http://stackoverflow.com/questions/228908/is-listsize-really-on */
+	mutable atomic_counter m_activeTasks;      /*!< Number of active tasks (aka tasks being executed by a worker) */
+	mutable atomic_counter m_pendingTasks;     /*!< Number of tasks in the queue: \code = m_taskQueue.size() + m_futureTasks.size() \endcode */
+	mutable atomic_counter m_threadCount;      /*!< Number of threads in the pool \see http://stackoverflow.com/questions/228908/is-listsize-really-on */
 
 	thread              m_threadMonitor;    /*! A reference to the thread executing the monitor */
 	mutex               m_lockTasks;        /*!< Synchronizes access to the immediate-tasks queue */
@@ -386,7 +386,7 @@ public:
 	 * \note The pool can be active and stopping at the same time, scheduling functions
 	 * must perform an stricter validation.
 	 */
-	bool is_active()
+	bool is_active() const
 	{
 		return bool(m_state & pool_state_active);
 	}
@@ -394,7 +394,7 @@ public:
 	/*!
 	 * Returns the number of active tasks. \see worker_thread
 	 */
-	unsigned int active_tasks()
+	unsigned int active_tasks() const
 	{
 		return m_activeTasks;
 	}
@@ -403,7 +403,7 @@ public:
 	 * Return the number of pending tasks, aka the number
 	 * of tasks in the queue
 	 */
-	unsigned int pending_tasks()
+	unsigned int pending_tasks() const
 	{
 		return m_pendingTasks;
 	}
@@ -413,7 +413,7 @@ public:
 	 *
 	 * We use a separate counter because list::size is slow
 	 */
-	unsigned int pool_size()
+	unsigned int pool_size() const
 	{
 		return m_threadCount;
 	}
@@ -729,17 +729,17 @@ schedule_result pool::schedule(const task_type& task, const boost::posix_time::t
 	return pimpl->schedule(task, get_system_time() + rel_time);
 }
 
-unsigned int pool::active_tasks()
+unsigned int pool::active_tasks() const
 {
 	return pimpl->active_tasks();
 }
 
-unsigned int pool::pending_tasks()
+unsigned int pool::pending_tasks() const
 {
 	return pimpl->pending_tasks();
 }
 
-unsigned int pool::pool_size()
+unsigned int pool::pool_size() const
 {
 	return pimpl->pool_size();
 }
