@@ -607,10 +607,11 @@ private:
 		static const float RESIZE_DOWN_FACTOR  = 2.0; // size decrease factor
 
 		// milliseconds to sleep between checks
-		static const posix_time::milliseconds THREAD_SLEEP_MS(2);
+		static const posix_time::milliseconds THREAD_SLEEP_MS(4);
+		static const posix_time::milliseconds THREAD_SLEEP_MS_IDLE(10);
 
-		const posix_time::milliseconds resize_up_ms(max(m_resizeUpTolerance, 2u));
-		const posix_time::milliseconds resize_down_ms(max(m_resizeDownTolerance, 2u));
+		const posix_time::milliseconds resize_up_ms(max(m_resizeUpTolerance, 5u));
+		const posix_time::milliseconds resize_down_ms(max(m_resizeDownTolerance, 1000u));
 
 		system_time next_resize;
 		unsigned int pendingTasks;
@@ -676,15 +677,28 @@ private:
 					resize_flag = flag_no_resize;
 					m_owner->pool_size_changed( pool_size() - prev_pool_size );
 				}
-			}
 
-			// Now we wait, the wait time must be a smart value in order to guarantee not only the
-			// creation of new threads, but also the proper schedule of new tasks
-			system_time next_wakeup = get_system_time() + THREAD_SLEEP_MS;
-			lock.lock();
-			m_monitorCondition.timed_wait( lock,
-					next_task_time.is_not_a_date_time() ? next_wakeup : min(next_task_time, next_wakeup)
-				);
+				// optimize sleep when the pool is idle
+				system_time next_wakeup = get_system_time() +
+						(resize_flag == flag_resize_down ? THREAD_SLEEP_MS_IDLE : THREAD_SLEEP_MS);
+
+				lock.lock();
+				m_monitorCondition.timed_wait(lock,
+						next_task_time.is_not_a_date_time() ? next_wakeup : min(next_task_time, next_wakeup)
+					);
+			}
+			else
+			{ // pool cannot be resized, just wait for next future task
+				lock.lock();
+				if (next_task_time.is_not_a_date_time())
+				{ // just wait until the next call to schedule()
+					m_monitorCondition.wait(lock);
+				}
+				else
+				{ // wait until task is in schedule
+					m_monitorCondition.timed_wait(lock, next_task_time);
+				}
+			}
 		}
 	}
 };
