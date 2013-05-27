@@ -34,6 +34,7 @@ ARCHIVER = ar
 INCLUDES = -I$(BOOST_DIR)
 
 CFLAGS  :=$(CFLAGS) -fPIC -c -Wall -Wextra -pedantic \
+	-Wno-unused-local-typedefs \
 	-fno-strict-aliasing \
 	-DGCC_VERSION=$(GCC_VERSION)
 
