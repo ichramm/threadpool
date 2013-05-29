@@ -1,5 +1,5 @@
 
-#include <threadpool/pool.h>
+#include <threadpool/pool.hpp>
 
 #include <stdio.h>
 #include <string>
@@ -136,12 +136,13 @@ void test_rel_schedule()
 		p.schedule(bind(&test_function, false, "test_rel_schedule",  i, 1000), posix_time::seconds(5));
 	}
 	usleep(1000);
-	printf("pool_size:%u, active_tasks:%u, pending_tasks:%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks());
-	assert(p.pending_tasks() == total_tasks);
-	assert(p.active_tasks() == 0); // only the monitor is active
+	printf("pool_size:%u, active_tasks:%u, pending_tasks:%u future_tasks=%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks(), p.future_tasks());
+	assert(p.future_tasks() == total_tasks);
+	assert(p.pending_tasks() == 0);
+	assert(p.active_tasks() == 0);
 
-	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>0)) {
-		printf("pool_size:%u, active_tasks:%u, pending_tasks:%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks());
+	while((p.pending_tasks()+p.future_tasks()) > 0 || (!(p.pending_tasks()+p.future_tasks()) && p.active_tasks()>0)) {
+		printf("pool_size:%u, active_tasks:%u, pending_tasks:%u future_tasks=%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks(), p.future_tasks());
 		usleep(1000*1000);
 	}
 	printf("test_rel_schedule: End\n");
@@ -151,15 +152,16 @@ void test_abs_schedule()
 {
 	printf("test_abs_schedule: Start\n");
 
-	threadpool::pool p;
+	threadpool::pool p(5);
 	unsigned scheduled_tasks = 10;
 	for (unsigned i = 1; i <= scheduled_tasks; i++) {
 		p.schedule(bind(&test_function, false, "test_abs_schedule",  i, 1000), (get_system_time() + posix_time::seconds(5)));
 	}
 	usleep(1000);
-	printf("pool_size:%u, active_tasks:%u, pending_tasks:%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks());
-	//assert(p.pending_tasks() == scheduled_tasks);
-	assert(p.active_tasks() == 0); // only the monitor is active
+	printf("pool_size:%u, active_tasks:%u, pending_tasks:%u future_tasks=%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks(), p.future_tasks());
+	assert(p.future_tasks() == scheduled_tasks);
+	assert(p.pending_tasks() == 0);
+	assert(p.active_tasks() == 0);
 
 	unsigned tasks = 5;
 	for (unsigned i = 1; i <= tasks; i++) {
@@ -167,12 +169,12 @@ void test_abs_schedule()
 	}
 
 	usleep(2000);
+	assert(p.future_tasks() == scheduled_tasks);
 	assert(p.active_tasks() == tasks);
-	assert(p.pending_tasks() == scheduled_tasks);
+	assert(p.pending_tasks() == 0);
 
-
-	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>0)) {
-		printf("pool_size:%u, active_tasks:%u, pending_tasks:%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks());
+	while((p.pending_tasks()+p.future_tasks()) > 0 || (!(p.pending_tasks()+p.future_tasks()) && p.active_tasks()>0)) {
+		printf("pool_size:%u, active_tasks:%u, pending_tasks:%u future_tasks=%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks(), p.future_tasks());
 		usleep(1000*1000);
 	}
 	printf("test_abs_schedule: End\n");
@@ -236,9 +238,9 @@ void test_schedule_order(const char *desc, threadpool::pool & p, unsigned int nu
 		}
 	}
 
-	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>0)) {
+	while((p.pending_tasks()+p.future_tasks()) > 0 || (!(p.pending_tasks()+p.future_tasks()) && p.active_tasks()>0)) {
 		usleep(1000*500);
-		printf("pool_size:%u, active_tasks:%u, pending_tasks:%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks());
+		printf("pool_size:%u, active_tasks:%u, pending_tasks:%u future_tasks=%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks(), p.future_tasks());
 	}
 
 	int64_t average = a.get_average();
@@ -260,7 +262,7 @@ void test_trivial_schedule()
 void test_easy_schedule()
 {
 	// average seen in some runs: 60~150 microsecs
-	int max_microsecs = 150;
+	int max_microsecs = 600; // so it works in a VM with 1 core and 512MB RAM
 	threadpool::pool p;
 	test_schedule_order("easy", p, 500, max_microsecs);
 }
@@ -268,7 +270,7 @@ void test_easy_schedule()
 void test_easy_schedule_no_resize()
 {
 	// average seen in some runs: 40 to 70 microsecs
-	int max_microsecs = 100;
+	int max_microsecs = 300; // so it works in a VM with 1 core and 512MB RAM
 	threadpool::pool p(1000, 1000);
 	test_schedule_order("easy_no_resize", p, 1000, max_microsecs);
 }
@@ -276,7 +278,7 @@ void test_easy_schedule_no_resize()
 void test_heavy_schedule()
 {
 	// average seen in some runs: 60 ms
-	int max_microsecs = 100*1000; // too many tasks, maximum thread count is 1000
+	int max_microsecs = 1000; // too many tasks, maximum thread count is 1000
 	threadpool::pool p(-1, 1000);
 	test_schedule_order("heavy", p, 5*1000, max_microsecs);
 }
@@ -310,9 +312,9 @@ void test_schedule_queue()
 		p.schedule(bind(&test_schedule_queue_function, &counter, i), date);
 	}
 
-	while(p.pending_tasks() > 0 || (!p.pending_tasks() && p.active_tasks()>0)) {
+	while((p.pending_tasks()+p.future_tasks()) > 0 || (!(p.pending_tasks()+p.future_tasks()) && p.active_tasks()>0)) {
 		usleep(1000*500);
-		printf("pool_size:%u, active_tasks:%u, pending_tasks:%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks());
+		printf("pool_size:%u, active_tasks:%u, pending_tasks:%u future_tasks=%u\n", p.pool_size(), p.active_tasks(), p.pending_tasks(), p.future_tasks());
 	}
 
 	assert(counter == task_count);

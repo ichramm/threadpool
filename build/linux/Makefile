@@ -25,6 +25,8 @@ GCC_VERSION          ?= $(shell expr substr "`$(INCONCERT_COMPILER) -dumpversion
 # let the user override boost libs if he wants to
 BOOST_THREAD_LIB       ?=boost_thread-gcc$(GCC_VERSION)-mt-$(BOOST_VERSION)
 BOOST_THREAD_LIBD      ?=boost_thread-gcc$(GCC_VERSION)-mt-d-$(BOOST_VERSION)
+BOOST_SYSTEM_LIB       ?=boost_system-gcc$(GCC_VERSION)-mt-$(BOOST_VERSION)
+BOOST_SYSTEM_LIBD      ?=boost_system-gcc$(GCC_VERSION)-mt-d-$(BOOST_VERSION)
 
 CPPC   =$(INCONCERT_COMPILER)
 CC     =$(INCONCERT_COMPILER_C)
@@ -60,6 +62,7 @@ ifeq (Debug, $(findstring Debug,$(Target)))
 	LIB_NAME          =$(PROJECT_NAME)_d
 	CFLAGS           :=$(CFLAGS) -D_DEBUG -g3
 	BOOST_THREAD_LIB  =$(BOOST_THREAD_LIBD)
+	BOOST_SYSTEM_LIB  =$(BOOST_SYSTEM_LIBD)
 else
 	LIB_NAME  =$(PROJECT_NAME)
 	CFLAGS   :=$(CFLAGS) -O2 -g
@@ -95,7 +98,8 @@ $(OBJS_DIR):
 $(OBJS_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(COMPILE)
 
-$(OBJS_DIR)/pool.o: $(ROOT_DIR)/pool.h $(SRC_DIR)/pool.cpp
+$(OBJS_DIR)/pool.o: $(ROOT_DIR)/pool.hpp $(SRC_DIR)/pool.cpp \
+	$(ROOT_DIR)/utils/concurrent_queue.hpp $(ROOT_DIR)/utils/atomic.hpp
 
 .PHONY: clean
 clean:
@@ -109,4 +113,4 @@ $(OBJS_DIR)/tests.o: $(ROOT_DIR)/tests/tests.cpp
 
 tests: build $(OUTPUT_DIR)/threadpool.bin
 $(OUTPUT_DIR)/threadpool.bin: test_objs
-	$(LINKER) -O2 -g -o $(OUTPUT_DIR)/threadpool.bin $(OBJS_DIR)/tests.o $(LIBS) -L$(OUTPUT_DIR) -l$(LIB_NAME)
+	$(LINKER) -O2 -g -o $(OUTPUT_DIR)/threadpool.bin $(OBJS_DIR)/tests.o $(LIBS) -l$(BOOST_SYSTEM_LIB) -L$(OUTPUT_DIR) -l$(LIB_NAME)
