@@ -1,11 +1,11 @@
 /*!
- * \file   sync.hpp
+ * \file   event.hpp
  * \author ichramm
  *
  * Created on January 14, 2013, 9:15 PM
  */
-#ifndef threadpool_utils_sync_hpp__
-#define threadpool_utils_sync_hpp__
+#ifndef threadpool_utils_event_hpp__
+#define threadpool_utils_event_hpp__
 
 #include <boost/noncopyable.hpp>
 #include <boost/thread/mutex.hpp>
@@ -16,17 +16,13 @@ namespace threadpool
 	namespace utils
 	{
 		/*!
-		 * This class works like a manual-reset event.
+		 * A manual-reset event.
 		 *
 		 * It helps to synchronize two or more threads when a thread
 		 * has to met certain condition and the other(s) have to
-		 * wait until the condition is met.
-		 *
-		 * \note Wait functions are designed to cope with spurious
-		 * wakeups so the user does not have to worry about checking
-		 * whether the condition was actually set or not.
+		 * wait until the condition is met. (i.e. the event actually happens)
 		 */
-		class sync
+		class event
 			: private boost::noncopyable
 		{
 		public:
@@ -34,14 +30,14 @@ namespace threadpool
 			/*!
 			 * Lockable concept
 			 */
-			typedef boost::unique_lock<sync> scoped_lock;
+			typedef boost::unique_lock<event> scoped_lock;
 
 			/*!
 			 * Thrown when the \c scoped_lock object passed as parameter is not valid lock.
 			 *
 			 * A valid lock must met the following two conditions:
 			 * \li The lockable being held by the lock must be the
-			 * same \c synchronizer object on which the function is called
+			 * same \c event object on which the function is called
 			 * \li The lock must own the lock
 			 */
 			class invalid_lock
@@ -69,39 +65,24 @@ namespace threadpool
 			};
 
 			/*!
-			 * Predicate used as argument to \c condition::wait
+			 * Creates a new \c event object.
+			 *
+			 * The object's initial state is unsignaled (i.e. event is not set)
 			 */
-			class predicate_condition_met
-			{
-				bool &_condition_met;
-			public:
-				predicate_condition_met(bool &b)
-				 : _condition_met(b)
-				{ }
-
-				bool operator()() const
-				{
-					return _condition_met;
-				}
-			};
-
-			/*!
-			 * Creates a new \c synchronizer object with condition set to \c false
-			 */
-			sync()
-			 : _condition_met(false)
-			 , _is_condition_met(_condition_met)
+			event()
+			 : _event_set(false)
+			 , _is_event_set(_event_set)
 			{ }
 
 			/*!
-			 * \return \c true if the condition is met
+			 * \return \c true if the event is set
 			 *
 			 * \remarks This function acquires the lock
 			 */
-			bool is_condition_met() const
+			bool is_event_set() const
 			{
 				boost::lock_guard<boost::mutex> lock(_sync_mutex);
-				return _condition_met;
+				return _event_set;
 			}
 
 			/*!
@@ -110,15 +91,17 @@ namespace threadpool
 			 * It really does not make much sense to call this function but
 			 * if you want it then go on...
 			 */
-			bool is_condition_met(scoped_lock& lock)
+			bool is_event_set(scoped_lock& lock)
 				throw(invalid_lock)
 			{
 				lock_is_valid_or_throw(lock);
-				return _condition_met;
+				return _event_set;
 			}
 
 			/*!
 			 * Sets the condition to true and notifies all waiters of the change
+			 *
+			 * This also means the event is being signaled
 			 *
 			 * \note This function acquires the lock
 			 */
@@ -192,7 +175,7 @@ namespace threadpool
 			}
 
 			/*!
-			 * Waits until the condition is set
+			 * Waits until the event is signaled
 			 *
 			 * \note This function acquires the lock
 			 */
@@ -203,7 +186,7 @@ namespace threadpool
 			}
 
 			/*!
-			 * Waits until the condition is set using the specified lock
+			 * Waits until the event is signaled using the specified lock
 			 */
 			void wait(scoped_lock& lock)
 				throw(invalid_lock)
@@ -213,7 +196,7 @@ namespace threadpool
 			}
 
 			/*!
-			 * Waits until the condition is set or current time as reported
+			 * Waits until the event is signaled or current time as reported
 			 * by \c boost::get_system_time() is greater than or equal
 			 * to \code boost::get_system_time() + timeout \endcode
 			 *
@@ -226,7 +209,7 @@ namespace threadpool
 			}
 
 			/*!
-			 * Waits until the condition is set or current time as reported
+			 * Waits until the event is signaled or current time as reported
 			 * by \c boost::get_system_time() is greater than or equal
 			 * to \code boost::get_system_time() + timeout \endcode
 			 */
@@ -238,7 +221,7 @@ namespace threadpool
 			}
 
 			/*!
-			 * Waits until the condition is set or current time as specified
+			 * Waits until the event is signaled or current time as specified
 			 * by \c boost::get_system_time() is greater than or equal to \p deadline
 			 *
 			 * \note This function acquires the lock
@@ -250,7 +233,7 @@ namespace threadpool
 			}
 
 			/*!
-			 * Waits until the condition is set or current time as specified
+			 * Waits until the event is signaled or current time as specified
 			 * by \c boost::get_system_time() is greater than or equal to \p deadline
 			 */
 			bool wait(scoped_lock& lock, const boost::system_time& deadline)
@@ -261,6 +244,23 @@ namespace threadpool
 			}
 
 		private:
+
+			/*!
+			 * Predicate used as argument to \c condition::wait
+			 */
+			class predicate_event_set
+			{
+				bool &_event_set;
+			public:
+				predicate_event_set(bool &b)
+				 : _event_set(b)
+				{ }
+
+				bool operator()() const
+				{
+					return _event_set;
+				}
+			};
 
 			void lock_is_valid_or_throw(const scoped_lock& lock) const
 			{
@@ -277,32 +277,32 @@ namespace threadpool
 
 			void internal_set()
 			{
-				_condition_met = true;
+				_event_set = true;
 				_condition.notify_all();
 			}
 
 			void internal_reset()
 			{
-				_condition_met = false;
+				_event_set = false;
 			}
 
 			void internal_wait(scoped_lock& lock)
 			{
-				return _condition.wait(lock, _is_condition_met);
+				return _condition.wait(lock, _is_event_set);
 			}
 
 			bool internal_wait(scoped_lock& lock, const boost::system_time& deadline)
 			{
-				return _condition.timed_wait(lock, deadline, _is_condition_met);
+				return _condition.timed_wait(lock, deadline, _is_event_set);
 			}
 
 		private:
-			bool                    _condition_met;
-			predicate_condition_met _is_condition_met;
-			boost::condition        _condition;
-			mutable boost::mutex    _sync_mutex;
+			bool                 _event_set;
+			predicate_event_set  _is_event_set;
+			boost::condition     _condition;
+			mutable boost::mutex _sync_mutex;
 		};
 	}
 }
 
-#endif // threadpool_utils_sync_hpp__
+#endif // threadpool_utils_event_hpp__
