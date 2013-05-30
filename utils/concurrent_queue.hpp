@@ -167,7 +167,7 @@ namespace threadpool
 			/*!
 			 * Gets and removes an element from the front of the queue. If the
 			 * queue is empty this function blocks until a new element is pushed
-			 * into the stack.
+			 * into the queue.
 			 *
 			 * This is the recommended popping method when used wisely.
 			 *
@@ -175,8 +175,11 @@ namespace threadpool
 			 */
 			value_type pop()
 			{
-				value_type _result;
-				return pop(_result);
+				boost::unique_lock<boost::mutex> lock(_mutex);
+
+				_condition.wait(lock, _have_elements);
+
+				return pop_one();
 			}
 
 			/*!
@@ -199,25 +202,6 @@ namespace threadpool
 				}
 
 				return _result;
-			}
-
-			/*!
-			 * Gets and removes an element from the front of the queue. If the
-			 * queue is empty this function blocks until a new element is pushed
-			 * into the stack.
-			 *
-			 * \param result Set with the element being popped.
-			 *
-			 * \return \p result
-			 */
-			value_type& pop(value_type &result)
-			{
-				boost::unique_lock<boost::mutex> lock(_mutex);
-
-				_condition.wait(lock, _have_elements);
-
-				result = pop_one();
-				return result;
 			}
 
 			/*!
