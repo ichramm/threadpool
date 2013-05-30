@@ -34,9 +34,6 @@ namespace threadpool
 using utils::atomic_counter;
 using utils::concurrent_queue;
 
-/*! Used to stop working threads*/
-static const task_type null_task = 0;
-
 /*! A special initial value for \c system_time objects */
 static const system_time not_a_date_time;
 
@@ -156,46 +153,6 @@ private:
 		> future_task_queue;
 
 	/*!
-	 * This struct wraps a \c boost::thread in order to have more control
-	 * over the @c this pointer
-	 */
-	struct pool_thread : public enable_shared_from_this<pool_thread>
-	{
-		typedef shared_ptr<pool_thread> ptr;
-		typedef function<void(pool_thread::ptr)> worker;
-
-		/*!
-		 * Initializes this, creates the thread and subsequently starts the worker
-		 *
-		 * \param worker Function to execute in the thread
-		 */
-		pool_thread(const worker& work)
-		 : m_work(work)
-		{ }
-
-		/*!
-		 * Starts the worker thread
-		 */
-		void run()
-		{
-			m_thread = thread(m_work, shared_from_this());
-			m_work = 0; // not needed anymore
-		}
-
-		/*!
-		 * Detaches the thread to TLS can be freed immediately
-		 */
-		void detach()
-		{
-			m_thread.detach();
-		}
-
-	private:
-		worker  m_work;
-		thread  m_thread; /*!< The thread object itself (does not detach unless asked) */
-	};
-
-	/*!
 	 * This function computes the starting (and minimum) size of the pool, given the constructor parameters
 	 */
 	static inline unsigned int compute_min_threads(unsigned int desired_min_threads, unsigned int desired_max_threads)
@@ -244,9 +201,9 @@ private:
 	/*! A reference to the thread executing the monitor */
 	thread     m_threadMonitor;
 	/*!< Protects some non-atomic variables, synchronizes this */
-	mutex      m_mutex;
+	mutex      m_lockMonitor;
 	/*! Wake-ups the monitor when stopping or when there is a new future task */
-	condition  m_condition;
+	condition  m_monitorCondition;
 
 	/* Task Containers */
 
@@ -297,10 +254,16 @@ public:
 	void stop()
 	{
 		{ // future task must be canceled anyway
-			lock_guard<mutex> lock(m_mutex);
+			lock_guard<mutex> lock(m_lockMonitor);
+
+			if  (m_state != pool_state_active)
+			{
+				return;
+			}
+
 			m_state = pool_state_stopping;
 			clear_queue(m_futureTasks);
-			m_condition.notify_one();
+			m_monitorCondition.notify_one();
 		}
 
 		// wait for the monitor
@@ -316,7 +279,7 @@ public:
 
 		// I can safely queue empty tasks, one for each thread
 		// I now the pool size will no be increased...
-		stop_threads(pool_size());
+		request_stop(pool_size());
 
 		while ( pool_size() > 0 )
 		{ // now wait until all threads are finished
@@ -348,7 +311,7 @@ public:
 	{
 		assert(task != 0);
 
-		lock_guard<mutex> lock(m_mutex);
+		lock_guard<mutex> lock(m_lockMonitor);
 
 		if ( m_state != pool_state_active )
 		{ // should not happen, but we'd better be ready
@@ -357,7 +320,7 @@ public:
 
 		++m_futureTaskCount;
 		m_futureTasks.push( future_task(task, abs_time) );
-		m_condition.notify_one();
+		m_monitorCondition.notify_one();
 
 		return schedule_result_ok;
 	}
@@ -413,20 +376,21 @@ private:
 	void start_threads(unsigned int count)
 	{
 		for ( ; count > 0; --count )
-		{
-			pool_thread::ptr t = make_shared<pool_thread>(bind(&impl::worker_thread, this, _1));
-			t->run();
+		{ // create and detach thread
+			boost::thread t(&impl::worker_thread, this);
 		}
 	}
 
 	/*!
 	 * Posts as many empty tasks as in \p count
 	 */
-	void stop_threads(unsigned int count)
+	void request_stop(unsigned int count)
 	{
+		const task_type empty_task = 0;
+
 		for ( ; count > 0; --count )
 		{ // queue es many empty tasks as threads have to remove
-			m_taskQueue.push(null_task);
+			m_taskQueue.push( empty_task );
 		}
 
 		// there is no need to wait since
@@ -436,7 +400,7 @@ private:
 	/*!
 	 * Called by \c worker_thread when it's starting
 	 */
-	void on_thread_start(const pool_thread::ptr&)
+	void on_thread_start()
 	{
 		++m_threadCount;
 	}
@@ -444,20 +408,19 @@ private:
 	/*!
 	 * Called by \c worker_thread when it's about to exit
 	 */
-	void on_thread_exit(const pool_thread::ptr& t)
+	void on_thread_exit()
 	{
 		--m_threadCount;
-		t->detach(); // so TLS is freed immediately
 	}
 
 	/*!
 	 * This function loops forever polling the task queue for a task to execute.
 	 *
-	 * The function exists when popping a null task
+	 * The function exits when popping an empty task
 	 */
-	void worker_thread(pool_thread::ptr t)
+	void worker_thread()
 	{
-		on_thread_start(t);
+		on_thread_start();
 
 		for ( ; ; )
 		{
@@ -469,14 +432,11 @@ private:
 			}
 
 			++m_activeTaskCount;
-			{
-				this_thread::disable_interruption di;
-				task();
-			}
+			task();
 			--m_activeTaskCount;
 		}
 
-		on_thread_exit(t);
+		on_thread_exit();
 	}
 
 	/*!
@@ -488,7 +448,7 @@ private:
 	 * \param pendingTasks Returns how many tasks are waiting for an available thread
 	 */
 	system_time poll_future_tasks(unsigned int &pendingTasks)
-	{ // this function runs with the lock in m_mutex
+	{ // this function runs with the lock in m_lockMonitor
 		system_time result = not_a_date_time;
 
 		while ( !m_futureTasks.empty() )
@@ -542,7 +502,7 @@ private:
 		unsigned int pendingTasks;
 		resize_flags resize_flag = flag_no_resize;
 
-		mutex::scoped_lock lock(m_mutex);
+		mutex::scoped_lock lock(m_lockMonitor);
 
 		while( is_active() )
 		{
@@ -583,13 +543,13 @@ private:
 					switch(resize_flag)
 					{
 					case flag_resize_up:
-						next_pool_size = min(m_maxThreads, static_cast<unsigned int>(pool_size()*RESIZE_UP_FACTOR));
+						next_pool_size = min(m_maxThreads, static_cast<unsigned int>(pool_size() * RESIZE_UP_FACTOR));
 						start_threads(next_pool_size - prev_pool_size);
 						break;
 
 					case flag_resize_down:
-						next_pool_size = max(m_minThreads, static_cast<unsigned int>(pool_size()/RESIZE_DOWN_FACTOR));
-						stop_threads(pool_size() - next_pool_size );
+						next_pool_size = max(m_minThreads, static_cast<unsigned int>(pool_size() / RESIZE_DOWN_FACTOR));
+						request_stop(pool_size() - next_pool_size );
 						break;
 
 					default:
@@ -606,7 +566,7 @@ private:
 						(resize_flag == flag_resize_down ? THREAD_SLEEP_MS_IDLE : THREAD_SLEEP_MS);
 
 				lock.lock();
-				m_condition.timed_wait(lock,
+				m_monitorCondition.timed_wait(lock,
 						next_task_time.is_not_a_date_time() ? next_wakeup : min(next_task_time, next_wakeup)
 					);
 			}
@@ -615,11 +575,11 @@ private:
 				lock.lock();
 				if (next_task_time.is_not_a_date_time())
 				{ // just wait until the next call to schedule()
-					m_condition.wait(lock);
+					m_monitorCondition.wait(lock);
 				}
 				else
 				{ // wait until task is in schedule
-					m_condition.timed_wait(lock, next_task_time);
+					m_monitorCondition.timed_wait(lock, next_task_time);
 				}
 			}
 		}
