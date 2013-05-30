@@ -151,15 +151,19 @@ namespace threadpool
 			);
 
 		/*!
-		 * Cancels all pending tasks in the thread pool, but waits until running
-		 * tasks are complete. After that, stops and destroys all the threads in the pool
+		 * Calls \c stop() it wasn't called already, destroys \c *this
 		 */
 		~pool();
 
 		/*!
-		 * Stops the pool and subsequently destroys all threads
+		 * Stops the pool and subsequently destroys all threads. Checks for
+		 * the \c shutdown_option specified in the constructor in order to wait
+		 * or cancel pending tasks.
 		 *
 		 * \remarks This function should be called only once
+		 * 
+		 * \remarks Tasks scheduled for execution in the future will be canceled
+		 * no matter which \c shutdown_option is set.
 		 */
 		void stop();
 
