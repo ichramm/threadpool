@@ -177,15 +177,15 @@ private:
 	/*! Current pool state */
 	volatile pool_state   m_state;
 	/*! Minimum thread count */
-	const unsigned int    m_minThreads;
+	const unsigned int    m_MIN_POOL_THREADS;
 	/*! Maximum thread count */
-	const unsigned int    m_maxThreads;
+	const unsigned int    m_MAX_POOL_THREADS;
 	/*! Milliseconds to wait before creating more threads */
-	const unsigned int    m_resizeUpTolerance;
+	const unsigned int    m_TOLERANCE_RESIZE_UP;
 	/*! Milliseconds to wait before deleting threads */
-	const unsigned int    m_resizeDownTolerance;
+	const unsigned int    m_TOLERANCE_RESIZE_DOWN;
 	/*! How to behave on destruction */
-	const shutdown_option m_onShutdown;
+	const shutdown_option m_SHUTDOWN_STRATEGY;
 
 	/* Counters */
 
@@ -221,18 +221,18 @@ public:
 	     unsigned int timeout_del_threads, shutdown_option on_shutdown)
 	 : m_owner(owner)
 	 , m_state(pool_state_active)
-	 , m_minThreads(compute_min_threads(min_threads, max_threads))
-	 , m_maxThreads(max_threads) // cannot use more than max_threads threads
-	 , m_resizeUpTolerance(timeout_add_threads)
-	 , m_resizeDownTolerance(timeout_del_threads)
-	 , m_onShutdown(on_shutdown)
+	 , m_MIN_POOL_THREADS(compute_min_threads(min_threads, max_threads))
+	 , m_MAX_POOL_THREADS(max_threads) // cannot use more than max_threads threads
+	 , m_TOLERANCE_RESIZE_UP(timeout_add_threads)
+	 , m_TOLERANCE_RESIZE_DOWN(timeout_del_threads)
+	 , m_SHUTDOWN_STRATEGY(on_shutdown)
 	 , m_activeTaskCount(0)
 	 , m_futureTaskCount(0)
 	 , m_threadCount(0)
 	{
-		assert(m_maxThreads >= m_minThreads);
+		assert(m_MAX_POOL_THREADS >= m_MIN_POOL_THREADS);
 
-		start_threads(m_minThreads);
+		start_threads(m_MIN_POOL_THREADS);
 		m_threadMonitor = thread(&impl::pool_monitor, this);
 	}
 
@@ -269,7 +269,7 @@ public:
 		// wait for the monitor
 		m_threadMonitor.join();
 
-		if ( m_onShutdown == shutdown_option_cancel_tasks )
+		if ( m_SHUTDOWN_STRATEGY == shutdown_option_cancel_tasks )
 		{ // in case there are some pending tasks
 			m_taskQueue.clear();
 		}
@@ -301,6 +301,8 @@ public:
 		}
 
 		m_taskQueue.push(task); // will wake-up a thread
+		m_monitorCondition.notify_one();
+
 		return schedule_result_ok;
 	}
 
@@ -491,15 +493,14 @@ private:
 		static const float RESIZE_UP_FACTOR    = 1.5; // size increase factor
 		static const float RESIZE_DOWN_FACTOR  = 2.0; // size decrease factor
 
-		// milliseconds to sleep between checks
-		static const posix_time::milliseconds THREAD_SLEEP_MS(4);
-		static const posix_time::milliseconds THREAD_SLEEP_MS_IDLE(10);
+		// milliseconds to sleep between checks when there's nothing to do
+		static const posix_time::milliseconds long_sleep_ms(10000);
 
-		const posix_time::milliseconds resize_up_ms(max(m_resizeUpTolerance, 5u));
-		const posix_time::milliseconds resize_down_ms(max(m_resizeDownTolerance, 1000u));
+		const posix_time::milliseconds resize_up_ms(max(m_TOLERANCE_RESIZE_UP, 5u));
+		const posix_time::milliseconds resize_down_ms(max(m_TOLERANCE_RESIZE_DOWN, 1000u));
 
-		system_time next_resize;
 		unsigned int pendingTasks;
+		system_time next_resize = not_a_date_time;
 		resize_flags resize_flag = flag_no_resize;
 
 		mutex::scoped_lock lock(m_lockMonitor);
@@ -512,8 +513,8 @@ private:
 			// we don't need the lock anymore (allows to schedule future tasks)
 			lock.unlock();
 
-			if (m_minThreads < m_maxThreads )
-			{ // monitor only when the pool can actually be resized
+			if (m_MIN_POOL_THREADS < m_MAX_POOL_THREADS)
+			{ // monitor only when the pool can actually be resize
 				resize_flags step_flag;
 
 				if ( active_tasks() == pool_size() && pendingTasks  > 0 )
@@ -532,23 +533,33 @@ private:
 				if ( step_flag != resize_flag )
 				{ // flag changed, reset next resize time
 					resize_flag = step_flag;
-					if (step_flag != flag_no_resize)
-					{
-						next_resize = get_system_time() + (resize_flag == flag_resize_up ? resize_up_ms : resize_down_ms);
+					if (resize_flag == flag_resize_up && pool_size() < m_MAX_POOL_THREADS)
+					{ // only if we can actually add threads
+						next_resize = get_system_time() + resize_up_ms;
+					}
+					else if (resize_flag == flag_resize_down && pool_size() > m_MIN_POOL_THREADS)
+					{ // only if we can actually remove threads
+						next_resize = get_system_time() + resize_down_ms;
+					}
+					else if (step_flag != flag_no_resize) // just for show
+					{ // nothing to be done
+						resize_flag = flag_no_resize;
 					}
 				}
-				else if (step_flag != flag_no_resize && get_system_time() >= next_resize)
+
+				// not we check if a resize must be performed
+				if (resize_flag != flag_no_resize && get_system_time() >= next_resize)
 				{ // pool needs to be resized
 					unsigned int next_pool_size, prev_pool_size = pool_size();
 					switch(resize_flag)
 					{
 					case flag_resize_up:
-						next_pool_size = min(m_maxThreads, static_cast<unsigned int>(pool_size() * RESIZE_UP_FACTOR));
+						next_pool_size = min(m_MAX_POOL_THREADS, static_cast<unsigned int>(pool_size() * RESIZE_UP_FACTOR));
 						start_threads(next_pool_size - prev_pool_size);
 						break;
 
 					case flag_resize_down:
-						next_pool_size = max(m_minThreads, static_cast<unsigned int>(pool_size() / RESIZE_DOWN_FACTOR));
+						next_pool_size = max(m_MIN_POOL_THREADS, static_cast<unsigned int>(pool_size() / RESIZE_DOWN_FACTOR));
 						request_stop(pool_size() - next_pool_size );
 						break;
 
@@ -558,17 +569,34 @@ private:
 					}
 
 					resize_flag = flag_no_resize;
+					next_resize = not_a_date_time; // just for show 'cause we always test against resize_flag
 					m_owner->pool_size_changed( next_pool_size - prev_pool_size );
 				}
 
-				// optimize sleep when the pool is idle
-				system_time next_wakeup = get_system_time() +
-						(resize_flag == flag_resize_down ? THREAD_SLEEP_MS_IDLE : THREAD_SLEEP_MS);
-
 				lock.lock();
-				m_monitorCondition.timed_wait(lock,
-						next_task_time.is_not_a_date_time() ? next_wakeup : min(next_task_time, next_wakeup)
-					);
+
+				// choose how to sleep according to pool status
+				if (resize_flag == flag_no_resize && next_task_time.is_not_a_date_time())
+				{ // everything "seems" normal, and there are no future tasks
+					if (step_flag == flag_resize_down)
+					{ // the step told us to remove threads, but the pool is at minimum
+						m_monitorCondition.wait(lock); // until someone wakes us up
+					}
+					else
+					{ //  everything is normal, or the pool is full and we cannot add more thread
+						m_monitorCondition.timed_wait(lock, long_sleep_ms);
+					}
+				}
+				else if (resize_flag == flag_no_resize)
+				{ // everything "seems" normal and there is at least one future task, go on
+					m_monitorCondition.timed_wait(lock, next_task_time);
+				}
+				else
+				{ // a flag is set, or there's a future task in the queue, sleep as minimum as possible
+					m_monitorCondition.timed_wait(lock,
+							next_task_time.is_not_a_date_time() ? next_resize : min(next_task_time, next_resize)
+						);
+				}
 			}
 			else
 			{ // pool cannot be resized, just wait for next future task
