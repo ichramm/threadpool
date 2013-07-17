@@ -514,7 +514,7 @@ private:
 			lock.unlock();
 
 			if (m_MIN_POOL_THREADS < m_MAX_POOL_THREADS)
-			{ // monitor only when the pool can actually be resize
+			{ // monitor only when the pool can actually be resized
 				resize_flags step_flag;
 
 				if ( active_tasks() == pool_size() && pendingTasks  > 0 )
@@ -583,7 +583,7 @@ private:
 						m_monitorCondition.wait(lock); // until someone wakes us up
 					}
 					else
-					{ //  everything is normal, or the pool is full and we cannot add more thread
+					{ //  everything is normal, or the pool is full and we cannot add more threads
 						m_monitorCondition.timed_wait(lock, long_sleep_ms);
 					}
 				}
