@@ -139,7 +139,7 @@ private:
 		 */
 		bool operator()(const future_task& first, const future_task& second)
 		{
-			return first.get_schedule() >= second.get_schedule();
+			return first.get_schedule() > second.get_schedule();
 		}
 	};
 
