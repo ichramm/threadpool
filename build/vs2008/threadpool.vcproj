@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="9,00"
+	Version="9.00"
 	Name="threadpool"
 	ProjectGUID="{371A92C4-AD2C-46F2-9A32-38A6FE7D99A6}"
 	RootNamespace="threadpool"
@@ -293,7 +293,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\utils\sync.hpp"
+				RelativePath="..\..\utils\event.hpp"
 				>
 			</File>
 		</Filter>

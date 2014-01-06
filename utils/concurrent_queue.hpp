@@ -106,6 +106,12 @@ namespace threadpool
 				{
 					return !_container.empty();
 				}
+
+			private:
+				// warning C4512: 'threadpool::utils::concurrent_queue<_Tp>::predicate_have_elements' : assignment operator could not be generated
+				predicate_have_elements& operator=(const predicate_have_elements&) {
+					return *this;
+				}
 			};
 
 			/*!
