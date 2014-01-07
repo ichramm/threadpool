@@ -8,8 +8,6 @@
 #ifndef threadpool_pool_hpp__
 #define threadpool_pool_hpp__
 
-#define intptr_t int
-
 #include <boost/function.hpp>
 #include <boost/scoped_ptr.hpp>
 #include <boost/thread/thread_time.hpp>
