@@ -8,6 +8,8 @@
 #ifndef threadpool_pool_hpp__
 #define threadpool_pool_hpp__
 
+#define intptr_t int
+
 #include <boost/function.hpp>
 #include <boost/scoped_ptr.hpp>
 #include <boost/thread/thread_time.hpp>
@@ -52,13 +54,13 @@ namespace threadpool
 		schedule_result_err_down,
 
 		/*!
-		 * The pool is to busy to accept another task
+		 * The pool is too busy to accept another task
 		 * This may happens only if all the following conditions are met:
 		 * \li All threads are busy
 		 * \li Maximum number of threads has been reached (i.e. Cannot crate more threads)
 		 * \li Task queue is full
 		 *
-		 * \note This value is not in currently in use because the task queue has no capacity limit.
+		 * \note This value is not in use at the moment because the task queue has no capacity limit.
 		 */
 		schedule_result_err_busy
 	};
