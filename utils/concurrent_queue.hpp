@@ -92,29 +92,6 @@ namespace threadpool
 			};
 
 			/*!
-			 * Predicate used as argument to \c condition::wait
-			 */
-			class predicate_have_elements
-			{
-				container_type &_container;
-			public:
-				predicate_have_elements(container_type &c)
-				 : _container(c)
-				{ }
-
-				bool operator()() const
-				{
-					return !_container.empty();
-				}
-
-			private:
-				// warning C4512: 'threadpool::utils::concurrent_queue<_Tp>::predicate_have_elements' : assignment operator could not be generated
-				predicate_have_elements& operator=(const predicate_have_elements&) {
-					return *this;
-				}
-			};
-
-			/*!
 			 * Initializes an empty queue
 			 */
 			concurrent_queue()
@@ -249,6 +226,29 @@ namespace threadpool
 			}
 
 		private:
+
+			/*!
+			 * Predicate used as argument to \c condition::wait
+			 */
+			class predicate_have_elements
+			{
+				container_type &_container;
+			public:
+				predicate_have_elements(container_type &c)
+				 : _container(c)
+				{ }
+
+				bool operator()() const
+				{
+					return !_container.empty();
+				}
+
+			private:
+				// warning C4512: 'threadpool::utils::concurrent_queue<_Tp>::predicate_have_elements' : assignment operator could not be generated
+				predicate_have_elements& operator=(const predicate_have_elements&) {
+					return *this;
+				}
+			};
 
 			void push_one(const value_type &element)
 			{
