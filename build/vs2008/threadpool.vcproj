@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="9.00"
+	Version="9,00"
 	Name="threadpool"
 	ProjectGUID="{371A92C4-AD2C-46F2-9A32-38A6FE7D99A6}"
 	RootNamespace="threadpool"
@@ -61,7 +61,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				OutputFile="$(OutDir)\$(ProjectName)_d.dll"
+				OutputFile="$(OutDir)\$(ProjectName)-vc9_d.dll"
 				LinkIncremental="2"
 				AdditionalLibraryDirectories="$(INCONCERT_DEVEL)\packages\boost_$(BOOST_VERSION)\lib"
 				GenerateDebugInformation="true"
