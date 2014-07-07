@@ -575,6 +575,11 @@ private:
 
 				lock.lock();
 
+				if (is_active() == false)
+				{ // the pool may have been stopped between lock() and unlock()
+					break;
+				}
+
 				// choose how to sleep according to pool status
 				if (resize_flag == flag_no_resize && next_task_time.is_not_a_date_time())
 				{ // everything "seems" normal, and there are no future tasks
