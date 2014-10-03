@@ -377,10 +377,13 @@ private:
 	 */
 	void start_threads(unsigned int count)
 	{
+		// use a barrier to make sure all threads have been created
+		boost::shared_ptr<boost::barrier> barrier(new boost::barrier(count + 1) );
 		for ( ; count > 0; --count )
 		{ // create and detach thread
 			boost::thread t(&impl::worker_thread, this);
 		}
+		barrier->wait();
 	}
 
 	/*!
@@ -402,9 +405,10 @@ private:
 	/*!
 	 * Called by \c worker_thread when it's starting
 	 */
-	void on_thread_start()
+	void on_thread_start(boost::shared_ptr<boost::barrier> signal_when_ready)
 	{
 		++m_threadCount;
+		signal_when_ready->wait();
 	}
 
 	/*!
@@ -420,9 +424,10 @@ private:
 	 *
 	 * The function exits when popping an empty task
 	 */
-	void worker_thread()
+	void worker_thread(boost::shared_ptr<boost::barrier> signal_when_ready)
 	{
-		on_thread_start();
+		on_thread_start(signal_when_ready);
+		signal_when_ready.reset(); // don't use it anymore after this
 
 		for ( ; ; )
 		{
