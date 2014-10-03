@@ -381,7 +381,7 @@ private:
 		boost::shared_ptr<boost::barrier> barrier(new boost::barrier(count + 1) );
 		for ( ; count > 0; --count )
 		{ // create and detach thread
-			boost::thread t(&impl::worker_thread, this);
+			boost::thread t(&impl::worker_thread, this, barrier);
 		}
 		barrier->wait();
 	}
