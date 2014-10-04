@@ -4,11 +4,9 @@
 
 PROJECT_NAME=threadpool
 
-INCONCERT_DEVEL   ?=../../../..
-INCONCERT_SOURCES ?=$(INCONCERT_DEVEL)/sources
+INCONCERT_DEVEL   ?=.
 INCONCERT_BIN     ?=$(INCONCERT_DEVEL)/bin
 INCONCERT_LIB     ?=$(INCONCERT_DEVEL)/lib
-PACKAGES          ?=$(INCONCERT_DEVEL)/packages
 INCLUDE_DIR       ?=/usr/local/include
 LIB_DIR           ?=/usr/local/lib
 
@@ -18,27 +16,17 @@ BOOST_VERSION ?=1_44
 BOOST_DIR     ?=$(INCLUDE_DIR)/boost-$(BOOST_VERSION)
 BOOST_LIBS    ?=$(LIB_DIR)
 
-INCONCERT_COMPILER   ?= g++
-INCONCERT_COMPILER_C ?= gcc
-GCC_VERSION          ?= $(shell expr substr "`$(INCONCERT_COMPILER) -dumpversion | tr -dc '[0-9]'`" 1 2)
-
 # let the user override boost libs if he wants to
-BOOST_THREAD_LIB       ?=boost_thread-gcc$(GCC_VERSION)-mt-$(BOOST_VERSION)
-BOOST_THREAD_LIBD      ?=boost_thread-gcc$(GCC_VERSION)-mt-d-$(BOOST_VERSION)
-BOOST_SYSTEM_LIB       ?=boost_system-gcc$(GCC_VERSION)-mt-$(BOOST_VERSION)
-BOOST_SYSTEM_LIBD      ?=boost_system-gcc$(GCC_VERSION)-mt-d-$(BOOST_VERSION)
+BOOST_THREAD_LIB       ?=boost_thread
+BOOST_SYSTEM_LIB       ?=boost_system
 
-CPPC   =$(INCONCERT_COMPILER)
-CC     =$(INCONCERT_COMPILER_C)
-LINKER =$(INCONCERT_COMPILER)
-ARCHIVER = ar
+LINKER =$(CXX)
+ARCHIVER = $(AR)
 
 INCLUDES = -I$(BOOST_DIR)
 
 CFLAGS  :=$(CFLAGS) -fPIC -c -Wall -Wextra -pedantic \
-	-Wno-unused-local-typedefs \
-	-fno-strict-aliasing \
-	-DGCC_VERSION=$(GCC_VERSION)
+	-fno-strict-aliasing
 
 ifeq (,$(findstring -Wno-error,$(CFLAGS)))
 	CFLAGS :=$(CFLAGS) -Werror
@@ -61,8 +49,6 @@ OBJS_DIR =$(OBJS_ROOT)/$(Target)
 ifeq (Debug, $(findstring Debug,$(Target)))
 	LIB_NAME          =$(PROJECT_NAME)_d
 	CFLAGS           :=$(CFLAGS) -D_DEBUG -g3
-	BOOST_THREAD_LIB  =$(BOOST_THREAD_LIBD)
-	BOOST_SYSTEM_LIB  =$(BOOST_SYSTEM_LIBD)
 else
 	LIB_NAME  =$(PROJECT_NAME)
 	CFLAGS   :=$(CFLAGS) -O2 -g
@@ -76,7 +62,7 @@ AFLAGS = rcs
 
 OBJS = $(OBJS_DIR)/pool.o
 
-COMPILE =$(CPPC) $(CFLAGS) "$<" -o "$(OBJS_DIR)/$(*F).o" $(INCLUDES)
+COMPILE =$(CXX) $(CFLAGS) "$<" -o "$(OBJS_DIR)/$(*F).o" $(INCLUDES)
 LINK    =$(LINKER) $(LDFLAGS) -o "$(OUTPUT_FILE)" $(OBJS) $(LIBS)
 
 # default target
@@ -109,7 +95,7 @@ clean:
 
 test_objs: $(OBJS_DIR)/tests.o $(ROOT_DIR)/pool.h
 $(OBJS_DIR)/tests.o: $(ROOT_DIR)/tests/tests.cpp
-	$(COMPILE) -I$(INCONCERT_SOURCES)
+	$(COMPILE) -I$(ROOT_DIR)/..
 
 tests: build $(OUTPUT_DIR)/threadpool.bin
 $(OUTPUT_DIR)/threadpool.bin: test_objs
