@@ -142,7 +142,6 @@
     <ClCompile Include="..\..\src\pool.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\pool.h" />
     <ClInclude Include="..\..\pool.hpp" />
     <ClInclude Include="..\..\utils\atomic.hpp" />
     <ClInclude Include="..\..\utils\concurrent_queue.hpp" />

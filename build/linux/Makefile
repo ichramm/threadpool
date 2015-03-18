@@ -93,7 +93,7 @@ clean:
 	rm -f $(OUTPUT_FILE)
 	rm -f $(OUTPUT_DIR)/threadpool.bin
 
-test_objs: $(OBJS_DIR)/tests.o $(ROOT_DIR)/pool.h
+test_objs: $(OBJS_DIR)/tests.o $(ROOT_DIR)/pool.hpp
 $(OBJS_DIR)/tests.o: $(ROOT_DIR)/tests/tests.cpp
 	$(COMPILE) -I$(ROOT_DIR)/..
 
