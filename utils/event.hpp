@@ -1,3 +1,4 @@
+/* kate: space-indent off; remove-trailing-spaces all; indent-width 4; */
 /*!
  * \file   event.hpp
  * \author ichramm

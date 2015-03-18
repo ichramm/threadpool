@@ -1,4 +1,4 @@
-
+/* kate: space-indent off; remove-trailing-spaces all; indent-width 4; */
 #include <threadpool/pool.hpp>
 
 #include <stdio.h>

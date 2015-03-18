@@ -1,3 +1,4 @@
+/* kate: space-indent off; remove-trailing-spaces all; indent-width 4; */
 /*!
  * \file pool.hpp
  * \author ichramm
@@ -161,7 +162,7 @@ namespace threadpool
 		 * or cancel pending tasks.
 		 *
 		 * \remarks This function should be called only once
-		 * 
+		 *
 		 * \remarks Tasks scheduled for execution in the future will be canceled
 		 * no matter which \c shutdown_option is set.
 		 */
